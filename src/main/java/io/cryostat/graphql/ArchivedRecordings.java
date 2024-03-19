@@ -39,6 +39,11 @@ public class ArchivedRecordings {
 
     @Inject RecordingHelper recordingHelper;
 
+    @Query("hello")
+    public String hello() {
+        return "hello there";
+    }
+
     @Blocking
     @Query("archivedRecordings")
     public TargetNodes.ArchivedRecordings listArchivedRecordings(ArchivedRecordingsFilter filter) {
