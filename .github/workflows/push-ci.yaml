@@ -130,7 +130,9 @@ jobs:
         name: cryostat-${{ matrix.arch }}
     - name: Import container tarball
       run: find containers -type f -exec docker load -i {} \;
-    - name: Write artifact metadata
+    - name: Prepare test harness
+      run: ./mvnw -Dquarkus.quinoa=false -Dspotless.check.skip -DskipTests package
+    - name: Replace artifact metadata
       run: |
         mkdir target ; \
         touch target/quarkus-artifact.properties ; \
