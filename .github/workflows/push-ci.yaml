@@ -134,7 +134,7 @@ jobs:
       run: |
         > target/quarkus-artifact.properties ; \
         echo "metadata.container-image=${{env.CI_IMG}}:linux-${{ matrix.arch }}" >> target/quarkus-artifact.properties ; \
-        echo "metadata.pull-required=true" >> target/quarkus-artifact.properties ; \
+        echo "metadata.pull-required=false" >> target/quarkus-artifact.properties ; \
         echo "type=jar-container" >> target/quarkus-artifact.properties
     - name: Run tests
       run: ./mvnw -B -U failsafe:integration-test failsafe:verify
