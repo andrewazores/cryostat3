@@ -102,7 +102,7 @@ jobs:
         name: cryostat-${{ matrix.arch }}
         path: cryostat-${{ matrix.arch }}.tar
 
-  test-images:
+  integration-test:
     name: Run integration tests
     runs-on: ubuntu-latest
     needs: [build-images]
@@ -123,13 +123,6 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
-    - name: Download container tarball
-      uses: actions/download-artifact@v4
-      with:
-        path: containers
-        name: cryostat-${{ matrix.arch }}
-    - name: Import container tarball
-      run: find containers -type f -exec docker load -i {} \;
     - name: Prepare metadata
       run: |
         ./mvnw -B -U \
@@ -140,13 +133,12 @@ jobs:
     - name: Run tests
       run: |
         ./mvnw -B -U \
-        -Dquarkus.container-image.image=${{env.CI_IMG}}:linux-${{ matrix.arch }} \
         -Dquarkus.docker.executable-name=docker \
         failsafe:integration-test
 
   publish-manifest:
     runs-on: ubuntu-latest
-    needs: [get-pom-properties, build-images, test-images]
+    needs: [get-pom-properties, build-images, integration-test]
     steps:
     - name: Download container tarballs
       uses: actions/download-artifact@v4
