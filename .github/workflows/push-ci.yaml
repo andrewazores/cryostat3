@@ -114,7 +114,7 @@ jobs:
       with:
         submodules: true
         fetch-depth: 0
-    - name: Install qemo
+    - name: Install qemu
       run: |
         sudo apt update
         sudo apt -y satisfy "qemu-user-static"
