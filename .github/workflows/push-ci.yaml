@@ -132,6 +132,7 @@ jobs:
       run: find containers -type f -exec docker load -i {} \;
     - name: Write artifact metadata
       run: |
+        touch target/quarkus-artifact.properties ; \
         > target/quarkus-artifact.properties ; \
         echo "metadata.container-image=${{env.CI_IMG}}:linux-${{ matrix.arch }}" >> target/quarkus-artifact.properties ; \
         echo "metadata.pull-required=false" >> target/quarkus-artifact.properties ; \
