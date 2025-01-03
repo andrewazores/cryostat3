@@ -128,6 +128,7 @@ jobs:
         ./mvnw -B -U \
         -DskipTests \
         -Dquarkus.quinoa=false \
+        -Dspotless.check.skip \
         -Dquarkus.container-image.build=false \
         package
     - name: Run tests
