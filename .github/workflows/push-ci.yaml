@@ -130,6 +130,12 @@ jobs:
         name: cryostat-${{ matrix.arch }}
     - name: Import container tarball
       run: find containers -type f -exec docker load -i {} \;
+    - name: Prepare metadata
+      run: |
+        ./mvnw -B -U \
+        -DskipTests \
+        -Dquarkus.container-image.build=false \
+        package
     - name: Run tests
       run: |
         ./mvnw -B -U \
