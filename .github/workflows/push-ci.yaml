@@ -134,7 +134,7 @@ jobs:
       run: ./mvnw -Dquarkus.quinoa=false -Dspotless.check.skip -DskipTests package
     - name: Replace artifact metadata
       run: |
-        mkdir target ; \
+        [ -d target ] || mkdir target ; \
         touch target/quarkus-artifact.properties ; \
         > target/quarkus-artifact.properties ; \
         echo "metadata.container-image=${{env.CI_IMG}}:linux-${{ matrix.arch }}" >> target/quarkus-artifact.properties ; \
