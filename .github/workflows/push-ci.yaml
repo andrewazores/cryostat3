@@ -123,19 +123,21 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
-    - name: Prepare test harness
+    - name: Download container tarball
+      uses: actions/download-artifact@v4
+      with:
+        path: containers
+        name: cryostat-${{ matrix.arch }}
+    - name: Import container tarball
+      run: find containers -type f -exec docker load -i {} \;
+    - name: Write artifact metadata
       run: |
-        ./mvnw -B -U \
-        -DskipTests \
-        -Dquarkus.quinoa=false \
-        -Dspotless.check.skip \
-        -Dquarkus.container-image.build=false \
-        package
+        > target/quarkus-artifact.properties ; \
+        echo "metadata.container-image=${{env.CI_IMG}}:linux-${{ matrix.arch }}" >> target/quarkus-artifact.properties ; \
+        echo "metadata.pull-required=true" >> target/quarkus-artifact.properties ; \
+        echo "type=jar-container" >> target/quarkus-artifact.properties
     - name: Run tests
-      run: |
-        ./mvnw -B -U \
-        -Dquarkus.docker.executable-name=docker \
-        failsafe:integration-test failsafe:verify
+      run: ./mvnw -B -U failsafe:integration-test failsafe:verify
 
   publish-manifest:
     runs-on: ubuntu-latest
