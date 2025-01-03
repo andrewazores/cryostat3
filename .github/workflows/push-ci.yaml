@@ -105,7 +105,10 @@ jobs:
   test-images:
     name: Run integration tests
     runs-on: ubuntu-latest
-    needs: [get-pom-properties, build-images]
+    needs: [build-images]
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     steps:
     - uses: actions/checkout@v4
       with:
@@ -120,21 +123,19 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
         cache: 'maven'
-    - name: Download container tarballs
+    - name: Download container tarball
       uses: actions/download-artifact@v4
       with:
         path: containers
-        pattern: cryostat-*
-        merge-multiple: true
-    - name: Import container tarballs
+        name: cryostat-${{ matrix.arch }}
+    - name: Import container tarball
+      run: find containers -type f -exec docker load -i {} \;
+    - name: Run tests
       run: |
-        find containers -type f -exec docker load -i {} \;
-        for tag in $(docker images --filter label=io.cryostat.component --format '{{ .Tag }}'); do
-          ./mvnw -B -U \
-          -Dquarkus.container-image.image=${{env.CI_IMG}}:${tag}
-          -Dquarkus.docker.executable-name=docker \
-          failsafe:integration-test
-        done
+        ./mvnw -B -U \
+        -Dquarkus.container-image.image=${{env.CI_IMG}}:linux-${{ matrix.arch }}
+        -Dquarkus.docker.executable-name=docker \
+        failsafe:integration-test
 
   publish-manifest:
     runs-on: ubuntu-latest
