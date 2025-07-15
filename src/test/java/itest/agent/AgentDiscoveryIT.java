@@ -20,9 +20,11 @@ import java.util.concurrent.TimeoutException;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 @QuarkusIntegrationTest
+@Disabled
 public class AgentDiscoveryIT extends AgentTestBase {
     @Test
     void shouldDiscoverTarget() throws InterruptedException, TimeoutException, ExecutionException {

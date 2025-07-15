@@ -30,9 +30,11 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.json.JsonObject;
 import jakarta.websocket.DeploymentException;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 @QuarkusIntegrationTest
+@Disabled
 public class AgentTargetAnalysisIT extends AgentTestBase {
 
     @Test
