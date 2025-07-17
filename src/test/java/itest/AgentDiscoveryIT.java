@@ -38,8 +38,6 @@ import org.junit.jupiter.api.Test;
 
 @QuarkusIntegrationTest
 @QuarkusTestResource(value = AgentApplicationResource.class, restrictToAnnotatedClass = true)
-// @EnabledIfEnvironmentVariable(named = "CI_ARCH", matches = "^$")
-// @EnabledIfEnvironmentVariable(named = "CI_ARCH", matches = "^amd64|AMD64$")
 @Disabled
 public class AgentDiscoveryIT extends HttpClientTest {
 
