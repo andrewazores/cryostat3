@@ -1,0 +1,518 @@
+/*
+ * Cryostat Architecture Diagram
+ *
+ * Author: Bob (AI Software Engineer)
+ * Created: 2026-01-08
+ *
+ * Description:
+ * This Graphviz DOT file represents the complete architectural diagram of Cryostat,
+ * a container-native JVM application for managing JDK Flight Recorder (JFR) data.
+ *
+ * The diagram includes:
+ * - Core Application Layer (main application, configuration, health checks)
+ * - API Layers (REST, GraphQL, WebSocket)
+ * - Discovery Subsystem (Kubernetes, Docker/Podman, JDP, Custom, Plugins)
+ * - Target Management (connection pooling, Agent connections)
+ * - Recording Management (active recordings, archiving, snapshots)
+ * - Event Templates (S3-backed, preset, target-specific)
+ * - Rules Engine (automated recording rules with CEL expressions)
+ * - Reports & Analysis (report generation, caching, aggregation)
+ * - Diagnostics (heap dumps, thread dumps)
+ * - JMC Agent Integration (dynamic probes)
+ * - Security & Credentials
+ * - Storage Layer (PostgreSQL, S3-compatible storage)
+ * - External Services (Report Sidecar, JFR Datasource, Cryostat Agent)
+ * - Infrastructure (Quarkus, Quartz, Caffeine Cache, Event Bus)
+ *
+ * To generate visualizations:
+ *   dot -Tpng cryostat-architecture.dot -o cryostat-architecture.png
+ *   dot -Tsvg cryostat-architecture.dot -o cryostat-architecture.svg
+ *   dot -Tpdf cryostat-architecture.dot -o cryostat-architecture.pdf
+ *
+ * ============================================================================
+ * MAINTENANCE INSTRUCTIONS FOR FUTURE UPDATES:
+ * ============================================================================
+ *
+ * To request Bob to update this diagram after code changes, use this prompt:
+ *
+ * "Bob, please analyze the recent changes in the Cryostat codebase (excluding
+ * src/main/webui) and update the cryostat-architecture.dot file to reflect:
+ *
+ * 1. Any new components, classes, or services that have been added
+ * 2. Any removed or deprecated components
+ * 3. Changes to relationships and dependencies between components
+ * 4. New subsystems or architectural layers
+ * 5. Changes to external integrations or storage mechanisms
+ * 6. Updates to the API layers (REST, GraphQL, WebSocket)
+ *
+ * Please maintain the existing visual style and organization, update the
+ * modification date in the header, and provide a summary of the changes made."
+ *
+ * ============================================================================
+ */
+
+digraph CryostatArchitecture {
+    // Graph settings
+    rankdir=TB;
+    compound=true;
+    newrank=true;
+    splines=ortho;
+    nodesep=0.8;
+    ranksep=1.2;
+    
+    // Global node settings
+    node [shape=box, style="rounded,filled", fontname="Arial", fontsize=11];
+    edge [fontname="Arial", fontsize=9];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Legend";
+        style=dashed;
+        fontsize=10;
+        
+        legend_core [label="Core Component", fillcolor="#E8F4F8", shape=box];
+        legend_api [label="API Layer", fillcolor="#FFF4E6", shape=box];
+        legend_storage [label="Storage/External", fillcolor="#F0F0F0", shape=box];
+        legend_subsystem [label="Subsystem", fillcolor="#E8F8E8", shape=box];
+        
+        legend_core -> legend_api [style=invis];
+        legend_api -> legend_storage [style=invis];
+        legend_storage -> legend_subsystem [style=invis];
+    }
+    
+    // ========== CORE APPLICATION LAYER ==========
+    subgraph cluster_core {
+        label="Core Application Layer";
+        style=filled;
+        fillcolor="#E8F4F8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Cryostat [label="Cryostat\n(Main Application)", fillcolor="#B3D9E6"];
+        ConfigProperties [label="ConfigProperties\n(Configuration)", fillcolor="#B3D9E6"];
+        Producers [label="Producers\n(CDI Beans)", fillcolor="#B3D9E6"];
+        Health [label="Health\n(Health Checks)", fillcolor="#B3D9E6"];
+        BuildInfo [label="BuildInfo\n(Version Info)", fillcolor="#B3D9E6"];
+        
+        Cryostat -> ConfigProperties;
+        Cryostat -> Producers;
+        Cryostat -> Health;
+    }
+    
+    // ========== API LAYERS ==========
+    subgraph cluster_api {
+        label="API Layers";
+        style=filled;
+        fillcolor="#FFF4E6";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        // REST API
+        subgraph cluster_rest {
+            label="REST API";
+            style=filled;
+            fillcolor="#FFE6CC";
+            
+            Targets_REST [label="Targets", fillcolor="#FFD9B3"];
+            ActiveRecordings_REST [label="ActiveRecordings", fillcolor="#FFD9B3"];
+            ArchivedRecordings_REST [label="ArchivedRecordings", fillcolor="#FFD9B3"];
+            Snapshots_REST [label="Snapshots", fillcolor="#FFD9B3"];
+            EventTemplates_REST [label="EventTemplates", fillcolor="#FFD9B3"];
+            Rules_REST [label="Rules", fillcolor="#FFD9B3"];
+            Reports_REST [label="Reports", fillcolor="#FFD9B3"];
+            Diagnostics_REST [label="Diagnostics", fillcolor="#FFD9B3"];
+            Discovery_REST [label="Discovery", fillcolor="#FFD9B3"];
+            Credentials_REST [label="Credentials", fillcolor="#FFD9B3"];
+            Auth_REST [label="Auth", fillcolor="#FFD9B3"];
+            TrustStore_REST [label="TrustStore", fillcolor="#FFD9B3"];
+            JMCAgentProbes_REST [label="JMCAgentProbes", fillcolor="#FFD9B3"];
+            JMCAgentTemplates_REST [label="JMCAgentTemplates", fillcolor="#FFD9B3"];
+            MatchExpressions_REST [label="MatchExpressions", fillcolor="#FFD9B3"];
+        }
+        
+        // GraphQL API
+        subgraph cluster_graphql {
+            label="GraphQL API";
+            style=filled;
+            fillcolor="#FFE6CC";
+            
+            RootNode_GQL [label="RootNode\n(Discovery Tree)", fillcolor="#FFD9B3"];
+            TargetNodes_GQL [label="TargetNodes", fillcolor="#FFD9B3"];
+            ActiveRecordings_GQL [label="ActiveRecordings", fillcolor="#FFD9B3"];
+            ArchivedRecordings_GQL [label="ArchivedRecordings", fillcolor="#FFD9B3"];
+            EnvironmentNodes_GQL [label="EnvironmentNodes", fillcolor="#FFD9B3"];
+            HeapDumpGraphQL [label="HeapDumpGraphQL", fillcolor="#FFD9B3"];
+            ThreadDumpGraphQL [label="ThreadDumpGraphQL", fillcolor="#FFD9B3"];
+        }
+        
+        // WebSocket
+        MessagingServer [label="MessagingServer\n(WebSocket)", fillcolor="#FFD9B3"];
+    }
+    
+    // ========== DISCOVERY SUBSYSTEM ==========
+    subgraph cluster_discovery {
+        label="Discovery Subsystem";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        DiscoveryNode [label="DiscoveryNode\n(Tree Structure)", fillcolor="#C2E0C6"];
+        
+        subgraph cluster_discovery_engines {
+            label="Discovery Engines";
+            style=filled;
+            fillcolor="#D4EDD7";
+            
+            KubeDiscovery [label="KubeEndpointSlices\nDiscovery", fillcolor="#B8DFC2"];
+            ContainerDiscovery [label="Container Discovery\n(Docker/Podman)", fillcolor="#B8DFC2"];
+            JDPDiscovery [label="JDP Discovery", fillcolor="#B8DFC2"];
+            CustomDiscovery [label="Custom Discovery", fillcolor="#B8DFC2"];
+            DiscoveryPlugin [label="Discovery Plugin", fillcolor="#B8DFC2"];
+        }
+        
+        DiscoveryJwtFactory [label="DiscoveryJwtFactory", fillcolor="#C2E0C6"];
+        DiscoveryJwtValidator [label="DiscoveryJwtValidator", fillcolor="#C2E0C6"];
+        
+        KubeDiscovery -> DiscoveryNode;
+        ContainerDiscovery -> DiscoveryNode;
+        JDPDiscovery -> DiscoveryNode;
+        CustomDiscovery -> DiscoveryNode;
+        DiscoveryPlugin -> DiscoveryNode;
+        DiscoveryPlugin -> DiscoveryJwtFactory;
+        DiscoveryPlugin -> DiscoveryJwtValidator;
+    }
+    
+    // ========== TARGET MANAGEMENT ==========
+    subgraph cluster_targets {
+        label="Target Management";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Target [label="Target\n(Entity)", fillcolor="#C2E0C6"];
+        TargetConnectionManager [label="TargetConnectionManager\n(Connection Pool)", fillcolor="#C2E0C6"];
+        
+        subgraph cluster_connections {
+            label="Connection Types";
+            style=filled;
+            fillcolor="#D4EDD7";
+            
+            AgentConnection [label="AgentConnection\n(Cryostat Agent)", fillcolor="#B8DFC2"];
+            AgentClient [label="AgentClient\n(REST Client)", fillcolor="#B8DFC2"];
+            AgentJFRService [label="AgentJFRService", fillcolor="#B8DFC2"];
+        }
+        
+        TargetUpdateService [label="TargetUpdateService", fillcolor="#C2E0C6"];
+        TargetUpdateJob [label="TargetUpdateJob\n(Quartz)", fillcolor="#C2E0C6"];
+        
+        Target -> TargetConnectionManager;
+        TargetConnectionManager -> AgentConnection;
+        AgentConnection -> AgentClient;
+        AgentConnection -> AgentJFRService;
+        TargetUpdateService -> TargetUpdateJob;
+        TargetUpdateJob -> Target;
+    }
+    
+    // ========== RECORDING MANAGEMENT ==========
+    subgraph cluster_recordings {
+        label="Recording Management";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        ActiveRecording [label="ActiveRecording\n(Entity)", fillcolor="#C2E0C6"];
+        RecordingHelper [label="RecordingHelper\n(Core Operations)", fillcolor="#C2E0C6"];
+        RecordingOptions [label="RecordingOptions", fillcolor="#C2E0C6"];
+        RecordingOptionsBuilder [label="RecordingOptionsBuilder", fillcolor="#C2E0C6"];
+        RemoteRecordingInputStream [label="RemoteRecording\nInputStreamFactory", fillcolor="#C2E0C6"];
+        ActiveRecordingUpdateJob [label="ActiveRecording\nUpdateJob (Quartz)", fillcolor="#C2E0C6"];
+        
+        RecordingHelper -> ActiveRecording;
+        RecordingHelper -> RecordingOptions;
+        RecordingHelper -> RecordingOptionsBuilder;
+        RecordingHelper -> RemoteRecordingInputStream;
+        ActiveRecordingUpdateJob -> ActiveRecording;
+    }
+    
+    // ========== EVENT TEMPLATES ==========
+    subgraph cluster_events {
+        label="Event Templates";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        TemplateService [label="TemplateService\n(Interface)", fillcolor="#C2E0C6"];
+        S3TemplateService [label="S3TemplateService", fillcolor="#C2E0C6"];
+        PresetTemplateService [label="PresetTemplateService", fillcolor="#C2E0C6"];
+        TargetTemplateService [label="TargetTemplateService", fillcolor="#C2E0C6"];
+        BucketedEventTemplateMetadata [label="BucketedEventTemplate\nMetadataService", fillcolor="#C2E0C6"];
+        
+        TemplateService -> S3TemplateService;
+        TemplateService -> PresetTemplateService;
+        TemplateService -> TargetTemplateService;
+        S3TemplateService -> BucketedEventTemplateMetadata;
+    }
+    
+    // ========== RULES ENGINE ==========
+    subgraph cluster_rules {
+        label="Rules Engine";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Rule [label="Rule\n(Entity)", fillcolor="#C2E0C6"];
+        RuleService [label="RuleService\n(Lifecycle)", fillcolor="#C2E0C6"];
+        RuleExecutor [label="RuleExecutor\n(Execution)", fillcolor="#C2E0C6"];
+        ScheduledArchiveJob [label="ScheduledArchiveJob\n(Quartz)", fillcolor="#C2E0C6"];
+        
+        MatchExpression [label="MatchExpression\n(Entity)", fillcolor="#C2E0C6"];
+        MatchExpressionEvaluator [label="MatchExpression\nEvaluator (CEL)", fillcolor="#C2E0C6"];
+        
+        Rule -> RuleService;
+        RuleService -> RuleExecutor;
+        RuleExecutor -> ScheduledArchiveJob;
+        Rule -> MatchExpression;
+        MatchExpression -> MatchExpressionEvaluator;
+    }
+    
+    // ========== REPORTS & ANALYSIS ==========
+    subgraph cluster_reports {
+        label="Reports & Analysis";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        ReportsService [label="ReportsService\n(Interface)", fillcolor="#C2E0C6"];
+        ReportsServiceImpl [label="ReportsServiceImpl", fillcolor="#C2E0C6"];
+        MemoryCachingReports [label="MemoryCaching\nReportsService", fillcolor="#C2E0C6"];
+        StorageCachingReports [label="StorageCaching\nReportsService", fillcolor="#C2E0C6"];
+        AnalysisReportAggregator [label="AnalysisReport\nAggregator", fillcolor="#C2E0C6"];
+        LongRunningRequestGenerator [label="LongRunningRequest\nGenerator", fillcolor="#C2E0C6"];
+        
+        ReportsService -> ReportsServiceImpl;
+        ReportsService -> MemoryCachingReports;
+        ReportsService -> StorageCachingReports;
+        ReportsServiceImpl -> AnalysisReportAggregator;
+    }
+    
+    // ========== DIAGNOSTICS ==========
+    subgraph cluster_diagnostics {
+        label="Diagnostics";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        DiagnosticsHelper [label="DiagnosticsHelper", fillcolor="#C2E0C6"];
+        BucketedHeapDumpsMetadata [label="BucketedHeapDumps\nMetadataService", fillcolor="#C2E0C6"];
+        BucketedThreadDumpsMetadata [label="BucketedThreadDumps\nMetadataService", fillcolor="#C2E0C6"];
+        
+        DiagnosticsHelper -> BucketedHeapDumpsMetadata;
+        DiagnosticsHelper -> BucketedThreadDumpsMetadata;
+    }
+    
+    // ========== JMC AGENT INTEGRATION ==========
+    subgraph cluster_jmcagent {
+        label="JMC Agent Integration";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        S3ProbeTemplateService [label="S3ProbeTemplate\nService", fillcolor="#C2E0C6"];
+        ProbeTemplate [label="ProbeTemplate", fillcolor="#C2E0C6"];
+        
+        S3ProbeTemplateService -> ProbeTemplate;
+    }
+    
+    // ========== SECURITY & CREDENTIALS ==========
+    subgraph cluster_security {
+        label="Security & Credentials";
+        style=filled;
+        fillcolor="#E8F8E8";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Credential [label="Credential\n(Entity)", fillcolor="#C2E0C6"];
+        CredentialsFinder [label="CredentialsFinder\n(Matcher)", fillcolor="#C2E0C6"];
+        
+        Credential -> CredentialsFinder;
+    }
+    
+    // ========== STORAGE LAYER ==========
+    subgraph cluster_storage {
+        label="Storage Layer";
+        style=filled;
+        fillcolor="#F0F0F0";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Database [label="PostgreSQL\nDatabase", shape=cylinder, fillcolor="#D0D0D0"];
+        S3Storage [label="S3-Compatible\nStorage", shape=cylinder, fillcolor="#D0D0D0"];
+        StorageBuckets [label="StorageBuckets\n(Bucket Manager)", fillcolor="#E0E0E0"];
+        
+        subgraph cluster_metadata_services {
+            label="Metadata Services";
+            style=filled;
+            fillcolor="#E5E5E5";
+            
+            ArchivedRecordingMetadata [label="ArchivedRecording\nMetadataService", fillcolor="#D5D5D5"];
+            HeapDumpsMetadata [label="HeapDumps\nMetadataService", fillcolor="#D5D5D5"];
+            ThreadDumpsMetadata [label="ThreadDumps\nMetadataService", fillcolor="#D5D5D5"];
+        }
+        
+        StorageBuckets -> S3Storage;
+        ArchivedRecordingMetadata -> S3Storage;
+        HeapDumpsMetadata -> S3Storage;
+        ThreadDumpsMetadata -> S3Storage;
+    }
+    
+    // ========== EXTERNAL SERVICES ==========
+    subgraph cluster_external {
+        label="External Services";
+        style=filled;
+        fillcolor="#F0F0F0";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        ReportSidecar [label="Report Sidecar\n(Analysis Engine)", shape=component, fillcolor="#D0D0D0"];
+        JFRDatasource [label="JFR Datasource\n(Grafana Plugin)", shape=component, fillcolor="#D0D0D0"];
+        CryostatAgent [label="Cryostat Agent\n(Target JVMs)", shape=component, fillcolor="#D0D0D0"];
+        KubernetesAPI [label="Kubernetes API", shape=component, fillcolor="#D0D0D0"];
+        DockerAPI [label="Docker/Podman API", shape=component, fillcolor="#D0D0D0"];
+    }
+    
+    // ========== INFRASTRUCTURE ==========
+    subgraph cluster_infrastructure {
+        label="Infrastructure";
+        style=filled;
+        fillcolor="#F0F0F0";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        Quarkus [label="Quarkus Framework\n(REST, GraphQL, CDI,\nHibernate, WebSocket)", fillcolor="#E0E0E0"];
+        QuartzScheduler [label="Quartz Scheduler\n(Job Scheduling)", fillcolor="#E0E0E0"];
+        CaffeineCache [label="Caffeine Cache\n(In-Memory)", fillcolor="#E0E0E0"];
+        EventBus [label="Event Bus\n(CDI Events)", fillcolor="#E0E0E0"];
+    }
+    
+    // ========== CROSS-CUTTING CONCERNS ==========
+    subgraph cluster_crosscutting {
+        label="Cross-Cutting Concerns";
+        style=filled;
+        fillcolor="#F0F0F0";
+        fontsize=14;
+        fontname="Arial Bold";
+        
+        ExceptionMappers [label="ExceptionMappers\n(Error Handling)", fillcolor="#E0E0E0"];
+        JsonRequestFilter [label="JsonRequestFilter\n(Request Validation)", fillcolor="#E0E0E0"];
+        ObjectMapperCustomization [label="ObjectMapper\nCustomization", fillcolor="#E0E0E0"];
+        MessageCodecs [label="MessageCodecs\n(Event Bus)", fillcolor="#E0E0E0"];
+        DeclarativeConfiguration [label="Declarative\nConfiguration", fillcolor="#E0E0E0"];
+    }
+    
+    // ========== KEY RELATIONSHIPS ==========
+    
+    // Core to Infrastructure
+    Cryostat -> Quarkus [label="runs on", style=bold];
+    
+    // API to Core Services
+    Targets_REST -> Target [label="manages"];
+    ActiveRecordings_REST -> RecordingHelper [label="uses"];
+    ArchivedRecordings_REST -> RecordingHelper [label="uses"];
+    Snapshots_REST -> RecordingHelper [label="uses"];
+    EventTemplates_REST -> TemplateService [label="uses"];
+    Rules_REST -> RuleService [label="uses"];
+    Reports_REST -> ReportsService [label="uses"];
+    Diagnostics_REST -> DiagnosticsHelper [label="uses"];
+    Discovery_REST -> DiscoveryNode [label="queries"];
+    Credentials_REST -> Credential [label="manages"];
+    JMCAgentProbes_REST -> AgentClient [label="uses"];
+    JMCAgentTemplates_REST -> S3ProbeTemplateService [label="uses"];
+    MatchExpressions_REST -> MatchExpressionEvaluator [label="uses"];
+    
+    // GraphQL to Core Services
+    RootNode_GQL -> DiscoveryNode [label="queries"];
+    TargetNodes_GQL -> Target [label="queries"];
+    ActiveRecordings_GQL -> ActiveRecording [label="queries"];
+    ArchivedRecordings_GQL -> RecordingHelper [label="uses"];
+    
+    // Discovery to Targets
+    DiscoveryNode -> Target [label="discovers", style=bold, color=blue];
+    
+    // Target Management
+    Target -> TargetConnectionManager [label="connects via", style=bold];
+    TargetConnectionManager -> CredentialsFinder [label="uses"];
+    
+    // Recording Operations
+    RecordingHelper -> TargetConnectionManager [label="uses", style=bold];
+    RecordingHelper -> TemplateService [label="uses"];
+    RecordingHelper -> S3Storage [label="archives to"];
+    RecordingHelper -> ArchivedRecordingMetadata [label="updates"];
+    
+    // Rules Engine
+    RuleExecutor -> MatchExpressionEvaluator [label="evaluates"];
+    RuleExecutor -> RecordingHelper [label="creates recordings"];
+    RuleExecutor -> Target [label="applies to"];
+    ScheduledArchiveJob -> RecordingHelper [label="archives"];
+    
+    // Reports
+    ReportsServiceImpl -> ReportSidecar [label="generates via", style=dashed];
+    ReportsServiceImpl -> RecordingHelper [label="reads from"];
+    AnalysisReportAggregator -> ReportsService [label="aggregates"];
+    
+    // Diagnostics
+    DiagnosticsHelper -> TargetConnectionManager [label="uses"];
+    DiagnosticsHelper -> S3Storage [label="stores to"];
+    
+    // Storage
+    Target -> Database [label="persisted in", style=dashed];
+    ActiveRecording -> Database [label="persisted in", style=dashed];
+    Rule -> Database [label="persisted in", style=dashed];
+    Credential -> Database [label="persisted in", style=dashed];
+    MatchExpression -> Database [label="persisted in", style=dashed];
+    DiscoveryNode -> Database [label="persisted in", style=dashed];
+    
+    S3TemplateService -> S3Storage [label="reads from"];
+    S3ProbeTemplateService -> S3Storage [label="reads from"];
+    
+    // External Services
+    KubeDiscovery -> KubernetesAPI [label="queries", style=dashed];
+    ContainerDiscovery -> DockerAPI [label="queries", style=dashed];
+    AgentClient -> CryostatAgent [label="communicates with", style=dashed];
+    RecordingHelper -> JFRDatasource [label="uploads to", style=dashed];
+    
+    // Infrastructure
+    RuleService -> QuartzScheduler [label="schedules"];
+    TargetUpdateService -> QuartzScheduler [label="schedules"];
+    MatchExpressionEvaluator -> CaffeineCache [label="caches in"];
+    ReportsService -> CaffeineCache [label="caches in"];
+    
+    // Event Bus
+    Target -> EventBus [label="publishes events", style=dotted];
+    ActiveRecording -> EventBus [label="publishes events", style=dotted];
+    Rule -> EventBus [label="publishes events", style=dotted];
+    Credential -> EventBus [label="publishes events", style=dotted];
+    MatchExpression -> EventBus [label="publishes events", style=dotted];
+    EventBus -> MessagingServer [label="notifies", style=dotted];
+    EventBus -> RuleExecutor [label="triggers", style=dotted];
+    EventBus -> TargetUpdateService [label="triggers", style=dotted];
+    
+    // Cross-cutting
+    Quarkus -> ExceptionMappers [label="uses"];
+    Quarkus -> JsonRequestFilter [label="uses"];
+    Quarkus -> ObjectMapperCustomization [label="uses"];
+    EventBus -> MessageCodecs [label="uses"];
+    Cryostat -> DeclarativeConfiguration [label="loads"];
+    
+    // Long Running Requests
+    LongRunningRequestGenerator -> RecordingHelper [label="orchestrates"];
+    LongRunningRequestGenerator -> DiagnosticsHelper [label="orchestrates"];
+    LongRunningRequestGenerator -> ReportsService [label="orchestrates"];
+}
