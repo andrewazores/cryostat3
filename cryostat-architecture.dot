@@ -3,6 +3,7 @@
  *
  * Author: Bob (AI Software Engineer)
  * Created: 2026-01-08
+ * Last Modified: 2026-01-08
  *
  * Description:
  * This Graphviz DOT file represents the complete architectural diagram of Cryostat,
@@ -12,7 +13,7 @@
  * - Core Application Layer (main application, configuration, health checks)
  * - API Layers (REST, GraphQL, WebSocket)
  * - Discovery Subsystem (Kubernetes, Docker/Podman, JDP, Custom, Plugins)
- * - Target Management (connection pooling, Agent connections)
+ * - Target Management (connection pooling, JMX and Agent connections)
  * - Recording Management (active recordings, archiving, snapshots)
  * - Event Templates (S3-backed, preset, target-specific)
  * - Rules Engine (automated recording rules with CEL expressions)
@@ -23,6 +24,9 @@
  * - Storage Layer (PostgreSQL, S3-compatible storage)
  * - External Services (Report Sidecar, JFR Datasource, Cryostat Agent)
  * - Infrastructure (Quarkus, Quartz, Caffeine Cache, Event Bus)
+ * - cryostat-core Library (JFR connection toolkit, flight recorder services,
+ *   report generation, recording options builders, template services)
+ * - JDK Mission Control (JMC) components (RJMX, FlightRecorder, Rules)
  *
  * To generate visualizations:
  *   dot -Tpng cryostat-architecture.dot -o cryostat-architecture.png
@@ -36,7 +40,8 @@
  * To request Bob to update this diagram after code changes, use this prompt:
  *
  * "Bob, please analyze the recent changes in the Cryostat codebase (excluding
- * src/main/webui) and update the cryostat-architecture.dot file to reflect:
+ * src/main/webui) and the cryostat-core library (https://github.com/cryostatio/cryostat-core),
+ * then update the cryostat-architecture.dot file to reflect:
  *
  * 1. Any new components, classes, or services that have been added
  * 2. Any removed or deprecated components
@@ -44,9 +49,22 @@
  * 4. New subsystems or architectural layers
  * 5. Changes to external integrations or storage mechanisms
  * 6. Updates to the API layers (REST, GraphQL, WebSocket)
+ * 7. Changes to cryostat-core interfaces and implementations (JFRConnection,
+ *    CryostatFlightRecorderService, TemplateService, etc.)
+ * 8. Updates to JMX connection handling or Agent connection protocols
  *
- * Please maintain the existing visual style and organization, update the
- * modification date in the header, and provide a summary of the changes made."
+ * When analyzing, please:
+ * - Check Cryostat sources for usage of cryostat-core classes (search for
+ *   'import io.cryostat.core.*' and 'import io.cryostat.libcryostat.*')
+ * - Review cryostat-core repository for interface changes and new implementations
+ * - Identify which components are from cryostat-core vs Cryostat application
+ * - Maintain the existing visual style and organization
+ * - Update the 'Last Modified' date in the header
+ * - Provide a summary of the changes made
+ *
+ * Note: cryostat-core provides foundational JFR management capabilities including
+ * connection handling (JMX and Agent), flight recorder services, template services,
+ * report generation, and recording options builders."
  *
  * ============================================================================
  */
@@ -175,8 +193,11 @@ digraph CryostatArchitecture {
         DiscoveryJwtValidator [label="DiscoveryJwtValidator", fillcolor="#C2E0C6"];
         
         KubeDiscovery -> DiscoveryNode;
+        JvmDiscoveryClient [label="JvmDiscoveryClient\n(cryostat-core)", fillcolor="#C2E0C6"];
+        
         ContainerDiscovery -> DiscoveryNode;
         JDPDiscovery -> DiscoveryNode;
+        JDPDiscovery -> JvmDiscoveryClient;
         CustomDiscovery -> DiscoveryNode;
         DiscoveryPlugin -> DiscoveryNode;
         DiscoveryPlugin -> DiscoveryJwtFactory;
@@ -199,18 +220,38 @@ digraph CryostatArchitecture {
             style=filled;
             fillcolor="#D4EDD7";
             
-            AgentConnection [label="AgentConnection\n(Cryostat Agent)", fillcolor="#B8DFC2"];
+            JFRConnection [label="JFRConnection\n(Interface)", fillcolor="#B8DFC2", shape=box3d];
+            JFRJMXConnection [label="JFRJMXConnection\n(JMX/RMI)", fillcolor="#B8DFC2"];
+            AgentConnection [label="AgentConnection\n(HTTP/Agent)", fillcolor="#B8DFC2"];
             AgentClient [label="AgentClient\n(REST Client)", fillcolor="#B8DFC2"];
-            AgentJFRService [label="AgentJFRService", fillcolor="#B8DFC2"];
+            
+            JFRConnectionToolkit [label="JFRConnectionToolkit\n(cryostat-core)", fillcolor="#B8DFC2"];
+        }
+        
+        subgraph cluster_jfr_services {
+            label="Flight Recorder Services";
+            style=filled;
+            fillcolor="#D4EDD7";
+            
+            CryostatFlightRecorderService [label="CryostatFlightRecorder\nService (Interface)", fillcolor="#B8DFC2", shape=box3d];
+            JmxFlightRecorderService [label="JmxFlightRecorder\nService (JMX)", fillcolor="#B8DFC2"];
+            AgentJFRService [label="AgentJFRService\n(HTTP/Agent)", fillcolor="#B8DFC2"];
         }
         
         TargetUpdateService [label="TargetUpdateService", fillcolor="#C2E0C6"];
         TargetUpdateJob [label="TargetUpdateJob\n(Quartz)", fillcolor="#C2E0C6"];
         
         Target -> TargetConnectionManager;
-        TargetConnectionManager -> AgentConnection;
+        TargetConnectionManager -> JFRConnectionToolkit;
+        JFRConnectionToolkit -> JFRJMXConnection [label="creates"];
+        TargetConnectionManager -> JFRConnection [style=dashed, label="uses"];
+        JFRConnection -> JFRJMXConnection [style=dashed, arrowhead=empty];
+        JFRConnection -> AgentConnection [style=dashed, arrowhead=empty];
         AgentConnection -> AgentClient;
-        AgentConnection -> AgentJFRService;
+        JFRJMXConnection -> JmxFlightRecorderService [label="provides"];
+        AgentConnection -> AgentJFRService [label="provides"];
+        CryostatFlightRecorderService -> JmxFlightRecorderService [style=dashed, arrowhead=empty];
+        CryostatFlightRecorderService -> AgentJFRService [style=dashed, arrowhead=empty];
         TargetUpdateService -> TargetUpdateJob;
         TargetUpdateJob -> Target;
     }
@@ -226,13 +267,17 @@ digraph CryostatArchitecture {
         ActiveRecording [label="ActiveRecording\n(Entity)", fillcolor="#C2E0C6"];
         RecordingHelper [label="RecordingHelper\n(Core Operations)", fillcolor="#C2E0C6"];
         RecordingOptions [label="RecordingOptions", fillcolor="#C2E0C6"];
-        RecordingOptionsBuilder [label="RecordingOptionsBuilder", fillcolor="#C2E0C6"];
+        RecordingOptionsBuilder [label="RecordingOptionsBuilder\n(cryostat-core)", fillcolor="#C2E0C6"];
+        RecordingOptionsCustomizer [label="RecordingOptions\nCustomizer\n(cryostat-core)", fillcolor="#C2E0C6"];
+        EventOptionsBuilder [label="EventOptionsBuilder\n(cryostat-core)", fillcolor="#C2E0C6"];
         RemoteRecordingInputStream [label="RemoteRecording\nInputStreamFactory", fillcolor="#C2E0C6"];
         ActiveRecordingUpdateJob [label="ActiveRecording\nUpdateJob (Quartz)", fillcolor="#C2E0C6"];
         
         RecordingHelper -> ActiveRecording;
         RecordingHelper -> RecordingOptions;
         RecordingHelper -> RecordingOptionsBuilder;
+        RecordingHelper -> EventOptionsBuilder;
+        RecordingOptions -> RecordingOptionsCustomizer;
         RecordingHelper -> RemoteRecordingInputStream;
         ActiveRecordingUpdateJob -> ActiveRecording;
     }
@@ -245,15 +290,19 @@ digraph CryostatArchitecture {
         fontsize=14;
         fontname="Arial Bold";
         
-        TemplateService [label="TemplateService\n(Interface)", fillcolor="#C2E0C6"];
+        TemplateService [label="TemplateService\n(cryostat-core\nInterface)", fillcolor="#C2E0C6", shape=box3d];
+        MutableTemplateService [label="MutableTemplate\nService\n(cryostat-core)", fillcolor="#C2E0C6"];
+        RemoteTemplateService [label="RemoteTemplate\nService\n(cryostat-core)", fillcolor="#C2E0C6"];
         S3TemplateService [label="S3TemplateService", fillcolor="#C2E0C6"];
         PresetTemplateService [label="PresetTemplateService", fillcolor="#C2E0C6"];
         TargetTemplateService [label="TargetTemplateService", fillcolor="#C2E0C6"];
         BucketedEventTemplateMetadata [label="BucketedEventTemplate\nMetadataService", fillcolor="#C2E0C6"];
         
-        TemplateService -> S3TemplateService;
-        TemplateService -> PresetTemplateService;
-        TemplateService -> TargetTemplateService;
+        TemplateService -> MutableTemplateService [style=dashed, arrowhead=empty];
+        TemplateService -> RemoteTemplateService [style=dashed, arrowhead=empty];
+        MutableTemplateService -> S3TemplateService [style=dashed, arrowhead=empty];
+        TemplateService -> PresetTemplateService [style=dashed, arrowhead=empty];
+        TemplateService -> TargetTemplateService [style=dashed, arrowhead=empty];
         S3TemplateService -> BucketedEventTemplateMetadata;
     }
     
@@ -294,11 +343,15 @@ digraph CryostatArchitecture {
         StorageCachingReports [label="StorageCaching\nReportsService", fillcolor="#C2E0C6"];
         AnalysisReportAggregator [label="AnalysisReport\nAggregator", fillcolor="#C2E0C6"];
         LongRunningRequestGenerator [label="LongRunningRequest\nGenerator", fillcolor="#C2E0C6"];
+        InterruptibleReportGenerator [label="InterruptibleReport\nGenerator\n(cryostat-core)", fillcolor="#C2E0C6"];
+        RuleFilterParser [label="RuleFilterParser\n(cryostat-core)", fillcolor="#C2E0C6"];
         
         ReportsService -> ReportsServiceImpl;
         ReportsService -> MemoryCachingReports;
         ReportsService -> StorageCachingReports;
         ReportsServiceImpl -> AnalysisReportAggregator;
+        ReportsServiceImpl -> InterruptibleReportGenerator;
+        ReportsServiceImpl -> RuleFilterParser;
     }
     
     // ========== DIAGNOSTICS ==========
@@ -325,10 +378,14 @@ digraph CryostatArchitecture {
         fontsize=14;
         fontname="Arial Bold";
         
+        ProbeTemplateService [label="ProbeTemplate\nService\n(cryostat-core)", fillcolor="#C2E0C6", shape=box3d];
         S3ProbeTemplateService [label="S3ProbeTemplate\nService", fillcolor="#C2E0C6"];
-        ProbeTemplate [label="ProbeTemplate", fillcolor="#C2E0C6"];
+        ProbeTemplate [label="ProbeTemplate\n(cryostat-core)", fillcolor="#C2E0C6"];
+        Event [label="Event\n(cryostat-core)", fillcolor="#C2E0C6"];
         
+        ProbeTemplateService -> S3ProbeTemplateService [style=dashed, arrowhead=empty];
         S3ProbeTemplateService -> ProbeTemplate;
+        ProbeTemplate -> Event;
     }
     
     // ========== SECURITY & CREDENTIALS ==========
@@ -400,6 +457,25 @@ digraph CryostatArchitecture {
         QuartzScheduler [label="Quartz Scheduler\n(Job Scheduling)", fillcolor="#E0E0E0"];
         CaffeineCache [label="Caffeine Cache\n(In-Memory)", fillcolor="#E0E0E0"];
         EventBus [label="Event Bus\n(CDI Events)", fillcolor="#E0E0E0"];
+        
+        subgraph cluster_cryostat_core {
+            label="cryostat-core Library";
+            style=filled;
+            fillcolor="#E5E5E5";
+            
+            CryostatCore [label="CryostatCore\n(Core Library)", fillcolor="#D5D5D5"];
+        }
+        
+        subgraph cluster_jmc {
+            label="JDK Mission Control (JMC)";
+            style=filled;
+            fillcolor="#E5E5E5";
+            
+            JMC_Common [label="JMC Common", fillcolor="#D5D5D5"];
+            JMC_FlightRecorder [label="JMC FlightRecorder", fillcolor="#D5D5D5"];
+            JMC_RJMX [label="JMC RJMX", fillcolor="#D5D5D5"];
+            JMC_Rules [label="JMC Rules", fillcolor="#D5D5D5"];
+        }
     }
     
     // ========== CROSS-CUTTING CONCERNS ==========
@@ -421,6 +497,15 @@ digraph CryostatArchitecture {
     
     // Core to Infrastructure
     Cryostat -> Quarkus [label="runs on", style=bold];
+    Cryostat -> CryostatCore [label="uses", style=bold];
+    
+    // cryostat-core dependencies
+    JFRConnectionToolkit -> JMC_RJMX [label="uses", style=dashed];
+    JFRJMXConnection -> JMC_RJMX [label="uses", style=dashed];
+    JmxFlightRecorderService -> JMC_FlightRecorder [label="uses", style=dashed];
+    InterruptibleReportGenerator -> JMC_Rules [label="uses", style=dashed];
+    RecordingOptionsBuilder -> JMC_FlightRecorder [label="uses", style=dashed];
+    EventOptionsBuilder -> JMC_FlightRecorder [label="uses", style=dashed];
     
     // API to Core Services
     Targets_REST -> Target [label="manages"];
