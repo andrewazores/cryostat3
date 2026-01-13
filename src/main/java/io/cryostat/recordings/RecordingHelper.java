@@ -498,7 +498,7 @@ public class RecordingHelper {
 
     private void scheduleStopJob(
             long duration, URI connectUrl, long targetId, long remoteId, String recordingName) {
-        JobKey key = JobKey.jobKey(String.format("%d.%d.%s", targetId, remoteId, recordingName));
+        JobKey key = stopRecordingJobKey(targetId, remoteId, recordingName);
         JobDetail jobDetail =
                 JobBuilder.newJob(StopRecordingJob.class)
                         .withIdentity(key)
@@ -529,15 +529,19 @@ public class RecordingHelper {
         }
     }
 
+    private JobKey stopRecordingJobKey(long targetId, long remoteId, String recordingName) {
+        return JobKey.jobKey(
+                String.format("%d.%d.%s", targetId, remoteId, recordingName),
+                "recording.fixed-duration");
+    }
+
+    private JobKey stopRecordingJobKey(ActiveRecording recording) {
+        return stopRecordingJobKey(recording.target.id, recording.remoteId, recording.name);
+    }
+
     private void cancelStopJob(ActiveRecording recording) {
-        JobKey key =
-                JobKey.jobKey(
-                        String.format(
-                                "%s.%d.%d",
-                                recording.target.jvmId, recording.id, recording.remoteId),
-                        "recording.fixed-duration");
         try {
-            boolean deleted = scheduler.deleteJob(key);
+            boolean deleted = scheduler.deleteJob(stopRecordingJobKey(recording));
             if (deleted) {
                 logger.infov(
                         "Cancelled StopRecordingJob for {0} {1}",
