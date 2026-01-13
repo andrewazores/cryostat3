@@ -364,7 +364,7 @@ public abstract class ContainerDiscovery {
     }
 
     @DisallowConcurrentExecution
-    private static class ContainersQueryJob implements Job {
+    public static class ContainersQueryJob implements Job {
 
         @ConfigProperty(name = ConfigProperties.CONTAINERS_REQUEST_TIMEOUT)
         Duration requestTimeout;

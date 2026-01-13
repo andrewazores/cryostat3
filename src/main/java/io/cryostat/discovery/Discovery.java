@@ -582,7 +582,7 @@ public class Discovery {
      */
     @SuppressFBWarnings("RCN_REDUNDANT_NULLCHECK_OF_NULL_VALUE")
     @DisallowConcurrentExecution
-    static class RefreshPluginJob implements Job {
+    public static class RefreshPluginJob implements Job {
         @Inject Logger logger;
 
         @Override

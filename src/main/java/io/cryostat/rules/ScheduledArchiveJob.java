@@ -47,7 +47,7 @@ import software.amazon.awssdk.services.s3.model.S3Object;
  * @see io.cryostat.rules.Rule
  * @see io.cryostat.rules.RuleExecutor
  */
-class ScheduledArchiveJob implements Job {
+public class ScheduledArchiveJob implements Job {
 
     @Inject RecordingHelper recordingHelper;
     @Inject Logger logger;

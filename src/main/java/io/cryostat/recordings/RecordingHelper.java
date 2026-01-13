@@ -1563,7 +1563,7 @@ public class RecordingHelper {
     }
 
     @DisallowConcurrentExecution
-    static class StopRecordingJob implements Job {
+    public static class StopRecordingJob implements Job {
 
         @ConfigProperty(name = ConfigProperties.CONNECTIONS_FAILED_TIMEOUT)
         Duration connectionTimeout;
