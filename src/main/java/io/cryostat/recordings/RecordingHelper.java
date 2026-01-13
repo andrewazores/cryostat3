@@ -1631,6 +1631,14 @@ public class RecordingHelper {
                 ActiveRecording recording =
                         Target.getTargetById((long) ctx.getMergedJobDataMap().get("targetId"))
                                 .getRecordingById((long) ctx.getMergedJobDataMap().get("remoteId"));
+                if (recording.state.equals(RecordingState.STOPPED)) {
+                    logger.infov(
+                            "Fixed-duration recording stop unexpectedly found already-STOPPED"
+                                    + " recording: {0} {1}",
+                            ctx.getMergedJobDataMap().get("targetId"),
+                            ctx.getMergedJobDataMap().get("remoteId"));
+                    return;
+                }
                 logger.infov(
                         "Updating fixed-duration recording stop: {0} {1}",
                         recording.target.connectUrl, recording.name);
