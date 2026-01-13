@@ -18,6 +18,7 @@ package itest.agent;
 import static io.restassured.RestAssured.given;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -62,7 +63,7 @@ public class AgentTestBase extends HttpClientTest {
 
     Target waitForDiscovery(Predicate<Target> p)
             throws InterruptedException, TimeoutException, ExecutionException {
-        long last = System.nanoTime();
+        long last = Instant.now().toEpochMilli();
         long elapsed = 0;
         while (true) {
             var targets =
@@ -90,10 +91,10 @@ public class AgentTestBase extends HttpClientTest {
                             .toList();
             switch (targets.size()) {
                 case 0:
-                    long now = System.nanoTime();
+                    long now = Instant.now().toEpochMilli();
                     elapsed += (now - last);
                     last = now;
-                    if (Duration.ofNanos(elapsed).compareTo(DISCOVERY_TIMEOUT) > 0) {
+                    if (Duration.ofMillis(elapsed).compareTo(DISCOVERY_TIMEOUT) > 0) {
                         throw new AssertionFailedError("Timed out");
                     }
                     Thread.sleep(DISCOVERY_PERIOD.toMillis());

@@ -17,6 +17,7 @@ package io.cryostat.recordings;
 
 import static io.restassured.RestAssured.given;
 
+import java.time.Instant;
 import java.util.Map;
 
 import io.cryostat.AbstractTransactionalTestBase;
@@ -50,7 +51,7 @@ public class SnapshotsTest extends AbstractTransactionalTestBase {
     @Test
     void testWithSource() {
         int targetId = defineSelfCustomTarget();
-        long startTime = System.currentTimeMillis();
+        long startTime = Instant.now().toEpochMilli();
 
         int recordingId =
                 given().log()

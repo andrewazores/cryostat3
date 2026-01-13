@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -164,13 +165,13 @@ public abstract class HttpClientTest {
     protected JsonObject expectWebSocketNotification(
             String category, Duration timeout, Predicate<JsonObject> predicate)
             throws IOException, DeploymentException, InterruptedException, TimeoutException {
-        long now = System.nanoTime();
-        long deadline = now + timeout.toNanos();
+        Instant now = Instant.now();
+        Instant deadline = now.plus(timeout);
         logger.infov(
                 "waiting up to {0} for a WebSocket notification with category={1}",
                 timeout, category);
         do {
-            now = System.nanoTime();
+            now = Instant.now();
             String msg = WS_CLIENT.msgQ.poll(1, TimeUnit.SECONDS);
             if (msg == null) {
                 continue;
@@ -180,7 +181,7 @@ public abstract class HttpClientTest {
             if (category.equals(msgCategory) && predicate.test(obj)) {
                 return obj;
             }
-        } while (now < deadline);
+        } while (now.isBefore(deadline));
         throw new TimeoutException();
     }
 

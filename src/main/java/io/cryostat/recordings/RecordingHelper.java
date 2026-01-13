@@ -486,13 +486,14 @@ public class RecordingHelper {
                             .build();
             try {
                 if (!scheduler.checkExists(key)) {
+                    var at =
+                            Date.from(
+                                    Instant.now()
+                                            .plusMillis(recording.duration));
                     Trigger trigger =
                             TriggerBuilder.newTrigger()
                                     .withIdentity(key.getName(), key.getGroup())
-                                    .startAt(
-                                            new Date(
-                                                    System.currentTimeMillis()
-                                                            + recording.duration))
+                                    .startAt(at)
                                     .build();
                     scheduler.scheduleJob(jobDetail, trigger);
                 }

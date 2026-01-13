@@ -16,6 +16,8 @@
 package itest.bases;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -100,8 +102,8 @@ public abstract class StandardSelfTest extends HttpClientTest {
     public static void waitForDiscovery(int otherTargetsCount) {
         final int totalTargets = otherTargetsCount + 1;
         boolean found = false;
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DISCOVERY_DEADLINE_SECONDS);
-        while (!found && System.nanoTime() < deadline) {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(DISCOVERY_DEADLINE_SECONDS));
+        while (!found && Instant.now().isBefore(deadline)) {
             logger.debugv("Waiting for discovery to see at least {0} target(s)...", totalTargets);
             CompletableFuture<Boolean> queryFound = new CompletableFuture<>();
             WORKER.submit(

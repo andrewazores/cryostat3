@@ -17,6 +17,7 @@ package io.cryostat.recordings;
 
 import static io.restassured.RestAssured.given;
 
+import java.time.Instant;
 import java.util.Map;
 
 import io.cryostat.AbstractTransactionalTestBase;
@@ -131,7 +132,7 @@ public class ActiveRecordingsTest extends AbstractTransactionalTestBase {
     @Test
     void testCreateListAndDelete() {
         int targetId = defineSelfCustomTarget();
-        long startTime = System.currentTimeMillis();
+        long startTime = Instant.now().toEpochMilli();
         int recordingId =
                 given().log()
                         .all()
@@ -286,7 +287,7 @@ public class ActiveRecordingsTest extends AbstractTransactionalTestBase {
     @Test
     void testCreateStopAndDelete() {
         int targetId = defineSelfCustomTarget();
-        long startTime = System.currentTimeMillis();
+        long startTime = Instant.now().toEpochMilli();
         int recordingId =
                 given().log()
                         .all()

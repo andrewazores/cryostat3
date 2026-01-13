@@ -16,6 +16,7 @@
 package io.cryostat.rules;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -294,7 +295,7 @@ public class RuleExecutor {
                                         .withIntervalInSeconds(archivalPeriodSeconds)
                                         .repeatForever()
                                         .withMisfireHandlingInstructionNextWithRemainingCount())
-                        .startAt(new Date(System.currentTimeMillis() + initialDelay * 1000))
+                        .startAt(Date.from(Instant.now().plus(Duration.ofSeconds(initialDelay))))
                         .build();
         try {
             quartz.scheduleJob(jobDetail, trigger);

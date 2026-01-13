@@ -20,6 +20,7 @@ import static io.restassured.RestAssured.given;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -275,13 +276,13 @@ public abstract class AbstractTestBase {
     protected JsonObject expectWebSocketNotification(
             String category, Duration timeout, Predicate<JsonObject> predicate)
             throws IOException, DeploymentException, InterruptedException, TimeoutException {
-        long now = System.nanoTime();
-        long deadline = now + timeout.toNanos();
+        Instant now = Instant.now();
+        Instant deadline = now.plus(timeout);
         var client = new WebSocketClient();
         try (Session session =
                 ContainerProvider.getWebSocketContainer().connectToServer(client, wsUri)) {
             do {
-                now = System.nanoTime();
+                now = Instant.now();
                 String msg = client.wsMessages.poll(1, TimeUnit.SECONDS);
                 if (msg == null) {
                     continue;
@@ -292,7 +293,7 @@ public abstract class AbstractTestBase {
                 if (category.equals(msgCategory) && predicate.test(obj)) {
                     return obj;
                 }
-            } while (now < deadline);
+            } while (now.isBefore(deadline));
         } finally {
             client.wsMessages.clear();
         }
