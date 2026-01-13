@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -83,6 +84,7 @@ import io.cryostat.ws.Notification;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Identifier;
+import io.smallrye.mutiny.TimeoutException;
 import io.smallrye.mutiny.Uni;
 import io.vertx.ext.web.handler.HttpException;
 import io.vertx.mutiny.core.eventbus.EventBus;
@@ -485,10 +487,9 @@ public class RecordingHelper {
                         r -> {
                             if (!r.continuous) {
                                 scheduleStopJob(
-                                        r.id,
                                         r.duration,
                                         target.connectUrl,
-                                        target.jvmId,
+                                        target.id,
                                         r.remoteId,
                                         r.name);
                             }
@@ -496,37 +497,25 @@ public class RecordingHelper {
     }
 
     private void scheduleStopJob(
-            long recordingId,
-            long duration,
-            URI connectUrl,
-            String jvmId,
-            long remoteId,
-            String recordingName) {
-        JobKey key =
-                JobKey.jobKey(
-                        String.format("%s.%d.%d", jvmId, recordingId, remoteId),
-                        "recording.fixed-duration");
+            long duration, URI connectUrl, long targetId, long remoteId, String recordingName) {
+        JobKey key = JobKey.jobKey(String.format("%d.%d.%s", targetId, remoteId, recordingName));
         JobDetail jobDetail =
                 JobBuilder.newJob(StopRecordingJob.class)
                         .withIdentity(key)
                         .usingJobData(JobInterruptMonitorPlugin.AUTO_INTERRUPTIBLE, "true")
-                        .usingJobData("recordingId", recordingId)
+                        .usingJobData("targetId", targetId)
+                        .usingJobData("remoteId", remoteId)
                         .build();
         logger.infov("Scheduling StopRecordingJob for {0} {1}", connectUrl, recordingName);
         try {
             if (!scheduler.checkExists(key)) {
-                var at =
-                        Date.from(
-                                Instant.now()
-                                        .plusMillis(duration)
-                                        // FIXME
-                                        .plusSeconds(1));
+                Date at = Date.from(Instant.now().plusMillis(duration));
                 Trigger trigger =
                         TriggerBuilder.newTrigger()
                                 .withIdentity(key.getName(), key.getGroup())
                                 .startAt(at)
                                 .build();
-                scheduler.scheduleJob(jobDetail, trigger);
+                at = scheduler.scheduleJob(jobDetail, trigger);
                 logger.infov(
                         "Scheduled StopRecordingJob for {0} {1} at {2}",
                         connectUrl, recordingName, at);
@@ -1624,9 +1613,6 @@ public class RecordingHelper {
     @DisallowConcurrentExecution
     public static class StopRecordingJob implements Job {
 
-        @ConfigProperty(name = ConfigProperties.CONNECTIONS_FAILED_TIMEOUT)
-        Duration connectionTimeout;
-
         @Inject RecordingHelper recordingHelper;
         @Inject Logger logger;
 
@@ -1634,43 +1620,39 @@ public class RecordingHelper {
         @Transactional(Transactional.TxType.REQUIRES_NEW)
         public void execute(JobExecutionContext ctx) throws JobExecutionException {
             logger.infov(
-                    "Updating fixed-duration recording stop: {0}",
-                    ctx.getMergedJobDataMap().get("recordingId"));
-            QuarkusTransaction.joiningExisting()
-                    .call(
-                            () -> {
-                                try {
-
-                                    ActiveRecording recording =
-                                            ActiveRecording.find(
-                                                            "id",
-                                                            ctx.getMergedJobDataMap()
-                                                                    .get("recordingId"))
-                                                    .singleResult();
-                                    logger.infov(
-                                            "Updating fixed-duration recording stop: {0} {1}",
-                                            recording.target.connectUrl, recording.name);
-                                    recordingHelper
-                                            .stopRecording(recording)
-                                            .await()
-                                            .atMost(connectionTimeout);
-                                    logger.infov(
-                                            "Updated fixed-duration recording stop: {0} {1}",
-                                            recording.target.connectUrl, recording.name);
-                                } catch (NoResultException | NonUniqueResultException e) {
-                                    logger.error(e);
-                                    var jee = new JobExecutionException(e);
-                                    jee.setUnscheduleFiringTrigger(true);
-                                    jee.setRefireImmediately(false);
-                                    throw jee;
-                                } catch (Exception e) {
-                                    logger.error(e);
-                                    var jee = new JobExecutionException(e);
-                                    jee.setRefireImmediately(true);
-                                    throw jee;
-                                }
-                                return null;
-                            });
+                    "Updating fixed-duration recording stop: {0} {1}",
+                    ctx.getMergedJobDataMap().get("targetId"),
+                    ctx.getMergedJobDataMap().get("remoteId"));
+            try {
+                ActiveRecording recording =
+                        Target.getTargetById((long) ctx.getMergedJobDataMap().get("targetId"))
+                                .getRecordingById((long) ctx.getMergedJobDataMap().get("remoteId"));
+                logger.infov(
+                        "Updating fixed-duration recording stop: {0} {1}",
+                        recording.target.connectUrl, recording.name);
+                recordingHelper.stopRecording(recording).await().atMost(Duration.ofSeconds(1));
+                logger.infov(
+                        "Updated fixed-duration recording stop: {0} {1}",
+                        recording.target.connectUrl, recording.name);
+            } catch (NoResultException | NonUniqueResultException | NoSuchElementException e) {
+                logger.error(
+                        "StopRecordingJob failed due to not-exactly-1 eligible recording found", e);
+                var jee = new JobExecutionException(e);
+                jee.setUnscheduleFiringTrigger(true);
+                jee.setRefireImmediately(false);
+                throw jee;
+            } catch (TimeoutException e) {
+                logger.error("StopRecordingJob failed due to timeout", e);
+                var jee = new JobExecutionException(e);
+                jee.setUnscheduleFiringTrigger(true);
+                jee.setRefireImmediately(false);
+                throw jee;
+            } catch (Exception e) {
+                logger.error("Unexpected StopRecordingJob exception", e);
+                var jee = new JobExecutionException(e);
+                jee.setRefireImmediately(true);
+                throw jee;
+            }
         }
     }
 
