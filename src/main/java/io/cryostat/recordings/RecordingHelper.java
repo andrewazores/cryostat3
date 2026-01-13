@@ -90,8 +90,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.persistence.NoResultException;
+import jakarta.persistence.NonUniqueResultException;
 import jakarta.persistence.PersistenceException;
-import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.NotFoundException;
@@ -476,7 +477,8 @@ public class RecordingHelper {
         if (!recording.continuous) {
             JobKey key =
                     JobKey.jobKey(
-                            String.format("%s.%d", target.jvmId, recording.remoteId),
+                            String.format(
+                                    "%s.%d.%d", target.jvmId, recording.id, recording.remoteId),
                             "recording.fixed-duration");
             JobDetail jobDetail =
                     JobBuilder.newJob(StopRecordingJob.class)
@@ -484,18 +486,29 @@ public class RecordingHelper {
                             .usingJobData(JobInterruptMonitorPlugin.AUTO_INTERRUPTIBLE, "true")
                             .usingJobData("recordingId", recording.id)
                             .build();
+            logger.infov(
+                    "Scheduling StopRecordingJob for {0} {1}", target.connectUrl, recording.name);
             try {
                 if (!scheduler.checkExists(key)) {
                     var at =
                             Date.from(
                                     Instant.now()
-                                            .plusMillis(recording.duration));
+                                            .plusMillis(recording.duration)
+                                            // FIXME
+                                            .plusSeconds(1));
                     Trigger trigger =
                             TriggerBuilder.newTrigger()
                                     .withIdentity(key.getName(), key.getGroup())
                                     .startAt(at)
                                     .build();
                     scheduler.scheduleJob(jobDetail, trigger);
+                    logger.infov(
+                            "Scheduled StopRecordingJob for {0} {1} at {2}",
+                            target.connectUrl, recording.name, at);
+                } else {
+                    logger.infov(
+                            "Skipped scheduling StopRecordingJob for {0} {1} - already exists",
+                            target.connectUrl, recording.name);
                 }
             } catch (SchedulerException e) {
                 logger.warn(e);
@@ -1573,19 +1586,45 @@ public class RecordingHelper {
         @Inject Logger logger;
 
         @Override
-        @Transactional
         public void execute(JobExecutionContext ctx) throws JobExecutionException {
-            try {
-                ActiveRecording recording =
-                        ActiveRecording.find("id", ctx.getMergedJobDataMap().get("recordingId"))
-                                .singleResult();
-                recordingHelper.stopRecording(recording).await().atMost(connectionTimeout);
-            } catch (Exception e) {
-                var jee = new JobExecutionException(e);
-                jee.setUnscheduleFiringTrigger(true);
-                jee.setRefireImmediately(false);
-                throw jee;
-            }
+            logger.infov(
+                    "Updating fixed-duration recording stop: {0}",
+                    ctx.getMergedJobDataMap().get("recordingId"));
+            QuarkusTransaction.joiningExisting()
+                    .call(
+                            () -> {
+                                try {
+
+                                    ActiveRecording recording =
+                                            ActiveRecording.find(
+                                                            "id",
+                                                            ctx.getMergedJobDataMap()
+                                                                    .get("recordingId"))
+                                                    .singleResult();
+                                    logger.infov(
+                                            "Updating fixed-duration recording stop: {0} {1}",
+                                            recording.target.connectUrl, recording.name);
+                                    recordingHelper
+                                            .stopRecording(recording)
+                                            .await()
+                                            .atMost(connectionTimeout);
+                                    logger.infov(
+                                            "Updated fixed-duration recording stop: {0} {1}",
+                                            recording.target.connectUrl, recording.name);
+                                } catch (NoResultException | NonUniqueResultException e) {
+                                    logger.error(e);
+                                    var jee = new JobExecutionException(e);
+                                    jee.setUnscheduleFiringTrigger(true);
+                                    jee.setRefireImmediately(false);
+                                    throw jee;
+                                } catch (Exception e) {
+                                    logger.error(e);
+                                    var jee = new JobExecutionException(e);
+                                    jee.setRefireImmediately(true);
+                                    throw jee;
+                                }
+                                return null;
+                            });
         }
     }
 
