@@ -1,7 +1,6 @@
 /*
  * Cryostat Architecture Diagram
  *
- * Author: Bob (AI Software Engineer)
  * Created: 2026-01-08
  * Last Modified: 2026-01-08
  *
@@ -37,9 +36,9 @@
  * MAINTENANCE INSTRUCTIONS FOR FUTURE UPDATES:
  * ============================================================================
  *
- * To request Bob to update this diagram after code changes, use this prompt:
+ * To request updates to this diagram after code changes, use this prompt:
  *
- * "Bob, please analyze the recent changes in the Cryostat codebase (excluding
+ * "Please analyze the recent changes in the Cryostat codebase (excluding
  * src/main/webui) and the cryostat-core library (https://github.com/cryostatio/cryostat-core),
  * then update the cryostat-architecture.dot file to reflect:
  *
