@@ -540,6 +540,25 @@ public class RecordingHelper {
         }
     }
 
+    private void cancelStopJob(ActiveRecording recording) {
+        JobKey key =
+                JobKey.jobKey(
+                        String.format(
+                                "%s.%d.%d",
+                                recording.target.jvmId, recording.id, recording.remoteId),
+                        "recording.fixed-duration");
+        try {
+            boolean deleted = scheduler.deleteJob(key);
+            if (deleted) {
+                logger.infov(
+                        "Cancelled StopRecordingJob for {0} {1}",
+                        recording.target.connectUrl, recording.name);
+            }
+        } catch (SchedulerException e) {
+            logger.warn("Failed to cancel StopRecordingJob", e);
+        }
+    }
+
     public Uni<ActiveRecording> createSnapshot(Target target) {
         return this.createSnapshot(target, Map.of());
     }
@@ -620,6 +639,9 @@ public class RecordingHelper {
     }
 
     public Uni<ActiveRecording> stopRecording(ActiveRecording recording) throws Exception {
+        // Cancel the scheduled stop job since we're manually stopping
+        cancelStopJob(recording);
+
         return connectionManager.executeConnectedTask(
                 recording.target,
                 conn -> {
@@ -651,6 +673,9 @@ public class RecordingHelper {
     }
 
     public Uni<ActiveRecording> deleteRecording(ActiveRecording recording) {
+        // Cancel the scheduled stop job since we're deleting the recording
+        cancelStopJob(recording);
+
         return connectionManager
                 .executeConnectedTaskUni(
                         recording.target,
