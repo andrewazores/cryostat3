@@ -15,6 +15,7 @@
  */
 package io.cryostat.discovery;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -118,9 +119,44 @@ public class DiscoveryNode extends PanacheEntity {
     @JsonView(Views.Flat.class)
     public Target target;
 
+    /**
+     * Timestamp when this discovery node was soft-deleted. NULL indicates the node is active (not
+     * deleted).
+     */
+    @Column(name = "deleted_at")
+    @Nullable
+    @JsonIgnore
+    public Instant deletedAt;
+
     @Override
     public int hashCode() {
         return Objects.hash(id, name, nodeType, labels, children, target);
+    }
+
+    /**
+     * Check if this discovery node is soft-deleted.
+     *
+     * @return true if the node has been soft-deleted, false otherwise
+     */
+    @JsonIgnore
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Soft-delete this discovery node by setting the deletedAt timestamp to now. Does not persist
+     * the change automatically.
+     */
+    public void softDelete() {
+        this.deletedAt = Instant.now();
+    }
+
+    /**
+     * Undelete this discovery node by clearing the deletedAt timestamp. Does not persist the change
+     * automatically.
+     */
+    public void undelete() {
+        this.deletedAt = null;
     }
 
     public boolean hasChildren() {
@@ -175,6 +211,24 @@ public class DiscoveryNode extends PanacheEntity {
 
     public static List<DiscoveryNode> findAllByNodeType(NodeType nodeType) {
         return DiscoveryNode.find(DiscoveryNode.NODE_TYPE, nodeType.getKind()).list();
+    }
+
+    /**
+     * Find all active (non-deleted) discovery nodes.
+     *
+     * @return list of active nodes
+     */
+    public static List<DiscoveryNode> findActive() {
+        return find("deletedAt IS NULL").list();
+    }
+
+    /**
+     * Find all soft-deleted discovery nodes.
+     *
+     * @return list of deleted nodes
+     */
+    public static List<DiscoveryNode> findDeleted() {
+        return find("deletedAt IS NOT NULL").list();
     }
 
     public static DiscoveryNode environment(String name, NodeType nodeType) {

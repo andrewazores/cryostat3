@@ -201,5 +201,37 @@ CREATE INDEX IDX_QRTZ_FT_T_G
 CREATE INDEX IDX_QRTZ_FT_TG
   ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, TRIGGER_GROUP);
 
+-- Soft-deletion support for Target and DiscoveryNode entities
+-- Clean slate: Drop all discovery-related data to ensure upgraded instances
+-- start fresh with soft-deletion support. Discovery plugins will re-discover
+-- targets immediately after upgrade. Archived recordings in S3 are preserved.
+
+-- Delete all active recordings (ephemeral, will be recreated on reconnection)
+DELETE FROM ActiveRecording WHERE true;
+
+-- Delete all targets
+DELETE FROM Target WHERE true;
+
+-- Delete all discovery nodes except Universe, Realm base nodes, and builtin plugin realms
+DELETE FROM DiscoveryNode WHERE nodeType NOT IN ('Universe', 'Realm');
+
+-- Delete non-builtin Realm nodes (preserve JDP, Podman, Docker, KubernetesApi, Custom Targets)
+DELETE FROM DiscoveryNode
+WHERE nodeType = 'Realm'
+AND name NOT IN ('JDP', 'Podman', 'Docker', 'KubernetesApi', 'Custom Targets');
+
+-- Add soft deletion timestamp columns
+ALTER TABLE Target ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL;
+ALTER TABLE DiscoveryNode ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL;
+
+-- Add indexes for performance on soft-deletion queries
+CREATE INDEX idx_target_deleted_at ON Target(deleted_at);
+CREATE INDEX idx_discoverynode_deleted_at ON DiscoveryNode(deleted_at);
+
+-- Add composite indexes for common query patterns
+CREATE INDEX idx_target_jvmid_deleted ON Target(jvmId, deleted_at);
+CREATE INDEX idx_target_connecturl_deleted ON Target(connectUrl, deleted_at);
+CREATE INDEX idx_discoverynode_type_deleted ON DiscoveryNode(nodeType, deleted_at);
+
 
 COMMIT;

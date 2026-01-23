@@ -17,6 +17,7 @@ package io.cryostat.targets;
 
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,6 +40,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.vertx.mutiny.core.eventbus.EventBus;
+import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.CascadeType;
@@ -128,9 +130,44 @@ public class Target extends PanacheEntity {
     @JsonIgnore
     public DiscoveryNode discoveryNode;
 
+    /**
+     * Timestamp when this target was soft-deleted. NULL indicates the target is active (not
+     * deleted).
+     */
+    @Column(name = "deleted_at")
+    @Nullable
+    @JsonIgnore
+    public Instant deletedAt;
+
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public boolean isAgent() {
         return AgentConnection.isAgentConnection(connectUrl);
+    }
+
+    /**
+     * Check if this target is soft-deleted.
+     *
+     * @return true if the target has been soft-deleted, false otherwise
+     */
+    @JsonIgnore
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Soft-delete this target by setting the deletedAt timestamp to now. Does not persist the
+     * change automatically.
+     */
+    public void softDelete() {
+        this.deletedAt = Instant.now();
+    }
+
+    /**
+     * Undelete this target by clearing the deletedAt timestamp. Does not persist the change
+     * automatically.
+     */
+    public void undelete() {
+        this.deletedAt = null;
     }
 
     @JsonIgnore
@@ -144,19 +181,88 @@ public class Target extends PanacheEntity {
     }
 
     public static Target getTargetById(long targetId) {
-        return Target.find("id", targetId).singleResult();
+        return getTargetById(targetId, true);
+    }
+
+    public static Target getTargetById(long targetId, boolean includeDeleted) {
+        if (includeDeleted) {
+            return Target.find("id", targetId).singleResult();
+        }
+        return Target.find("id = ?1 AND deletedAt IS NULL", targetId).singleResult();
     }
 
     public static Target getTargetByConnectUrl(URI connectUrl) {
-        return find("connectUrl", connectUrl).singleResult();
+        return getTargetByConnectUrl(connectUrl, true);
+    }
+
+    public static Target getTargetByConnectUrl(URI connectUrl, boolean includeDeleted) {
+        if (includeDeleted) {
+            return find("connectUrl", connectUrl).singleResult();
+        }
+        return find("connectUrl = ?1 AND deletedAt IS NULL", connectUrl).singleResult();
     }
 
     public static Optional<Target> getTargetByJvmId(String jvmId) {
-        return find("jvmId", jvmId).firstResultOptional();
+        return getTargetByJvmId(jvmId, true);
+    }
+
+    public static Optional<Target> getTargetByJvmId(String jvmId, boolean includeDeleted) {
+        if (includeDeleted) {
+            return find("jvmId", jvmId).firstResultOptional();
+        }
+        return find("jvmId = ?1 AND deletedAt IS NULL", jvmId).firstResultOptional();
+    }
+
+    /**
+     * Find all active (non-deleted) targets.
+     *
+     * @return list of active targets
+     */
+    public static List<Target> findActive() {
+        return find("deletedAt IS NULL").list();
+    }
+
+    /**
+     * Find all soft-deleted targets.
+     *
+     * @return list of deleted targets
+     */
+    public static List<Target> findDeleted() {
+        return find("deletedAt IS NOT NULL").list();
+    }
+
+    /**
+     * Find all targets including both active and deleted.
+     *
+     * @return list of all targets
+     */
+    public static List<Target> findAllIncludingDeleted() {
+        return findAll().list();
+    }
+
+    /**
+     * Create a new target or undelete an existing soft-deleted target with the same connectUrl.
+     *
+     * @param connectUrl the connection URL for the target
+     * @return the new or undeleted target
+     */
+    public static Target createOrUndelete(URI connectUrl) {
+        Optional<Target> existing = find("connectUrl", connectUrl).firstResultOptional();
+        if (existing.isPresent()) {
+            Target target = existing.get();
+            if (target.isDeleted()) {
+                target.undelete();
+                target.persist();
+            }
+            return target;
+        }
+        Target target = new Target();
+        target.connectUrl = connectUrl;
+        return target;
     }
 
     public static List<Target> findByRealm(String realm) {
-        List<Target> targets = findAll().list();
+        List<Target> targets = findActive();
 
         return targets.stream()
                 .filter((t) -> realm.equals(t.annotations.cryostat().get("REALM")))
