@@ -173,6 +173,7 @@ public class DiscoveryNode extends PanacheEntity {
      * @return list of active children
      */
     @JsonProperty("children")
+    @JsonInclude
     @JsonView(Views.Nested.class)
     public List<DiscoveryNode> getChildren() {
         return children.stream().filter(child -> !child.isDeleted()).toList();
