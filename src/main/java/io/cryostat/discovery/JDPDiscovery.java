@@ -114,9 +114,10 @@ public class JDPDiscovery implements Consumer<JvmDiscoveryEvent> {
 
         switch (evt.getEventKind()) {
             case FOUND:
-                Target target = new Target();
-                target.activeRecordings = new ArrayList<>();
-                target.connectUrl = connectUrl;
+                Target target = Target.createOrUndelete(connectUrl);
+                if (target.activeRecordings == null) {
+                    target.activeRecordings = new ArrayList<>();
+                }
                 target.alias = evt.getJvmDescriptor().getMainClass();
                 target.annotations =
                         new Annotations(
@@ -145,7 +146,8 @@ public class JDPDiscovery implements Consumer<JvmDiscoveryEvent> {
                 realm.children.remove(t.discoveryNode);
                 t.discoveryNode.parent = null;
                 realm.persist();
-                t.delete();
+                t.softDelete();
+                t.persist();
                 break;
             default:
                 logger.warnv("Unknown JVM discovery event {0}", evt.getEventKind());

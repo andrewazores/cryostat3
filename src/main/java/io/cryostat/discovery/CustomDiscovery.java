@@ -269,9 +269,8 @@ public class CustomDiscovery {
 
     record TargetStub(URI connectUrl, String alias, String username, String password) {
         Target asTarget() {
-            var t = new Target();
+            var t = Target.createOrUndelete(connectUrl);
             t.alias = alias;
-            t.connectUrl = connectUrl;
             return t;
         }
 

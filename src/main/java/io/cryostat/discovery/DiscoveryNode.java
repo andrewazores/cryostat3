@@ -31,6 +31,7 @@ import io.cryostat.targets.Target;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonView;
 import io.quarkus.hibernate.orm.panache.PanacheEntity;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -99,7 +100,7 @@ public class DiscoveryNode extends PanacheEntity {
     public Map<String, String> labels = new HashMap<>();
 
     @OneToMany(fetch = FetchType.LAZY, orphanRemoval = true, mappedBy = "parent")
-    @JsonView(Views.Nested.class)
+    @JsonIgnore
     @Nullable
     public List<DiscoveryNode> children = new ArrayList<>();
 
@@ -149,6 +150,7 @@ public class DiscoveryNode extends PanacheEntity {
      */
     public void softDelete() {
         this.deletedAt = Instant.now();
+        this.softDeletePending = true;
     }
 
     /**
@@ -157,6 +159,33 @@ public class DiscoveryNode extends PanacheEntity {
      */
     public void undelete() {
         this.deletedAt = null;
+        this.undeletePending = true;
+    }
+
+    @JsonIgnore private transient boolean softDeletePending = false;
+
+    @JsonIgnore private transient boolean undeletePending = false;
+
+    /**
+     * Get the active (non-deleted) children of this node. This is the default view for API
+     * responses.
+     *
+     * @return list of active children
+     */
+    @JsonProperty("children")
+    @JsonView(Views.Nested.class)
+    public List<DiscoveryNode> getChildren() {
+        return children.stream().filter(child -> !child.isDeleted()).toList();
+    }
+
+    /**
+     * Get all children including soft-deleted ones.
+     *
+     * @return list of all children
+     */
+    @JsonIgnore
+    public List<DiscoveryNode> getAllChildren() {
+        return children;
     }
 
     public boolean hasChildren() {
@@ -186,27 +215,56 @@ public class DiscoveryNode extends PanacheEntity {
             Predicate<DiscoveryNode> predicate,
             Consumer<DiscoveryNode> customizer) {
         var kind = nodeType.getKind();
-        return DiscoveryNode.<DiscoveryNode>find(
-                        "#DiscoveryNode.byTypeWithName",
-                        Parameters.with("nodeType", kind).and("name", name))
-                .stream()
-                .filter(predicate)
-                .findFirst()
-                .orElseGet(
-                        () ->
-                                QuarkusTransaction.joiningExisting()
-                                        .call(
-                                                () -> {
-                                                    DiscoveryNode node = new DiscoveryNode();
-                                                    node.name = name;
-                                                    node.nodeType = kind;
-                                                    node.labels = new HashMap<>();
-                                                    node.children = new ArrayList<>();
-                                                    node.target = null;
-                                                    customizer.accept(node);
-                                                    node.persist();
-                                                    return node;
-                                                }));
+        // First check for active nodes
+        Optional<DiscoveryNode> activeNode =
+                DiscoveryNode.<DiscoveryNode>find(
+                                "#DiscoveryNode.byTypeWithName",
+                                Parameters.with("nodeType", kind).and("name", name))
+                        .stream()
+                        .filter(n -> !n.isDeleted())
+                        .filter(predicate)
+                        .findFirst();
+
+        if (activeNode.isPresent()) {
+            return activeNode.get();
+        }
+
+        // Check for soft-deleted nodes that can be undeleted
+        Optional<DiscoveryNode> deletedNode =
+                DiscoveryNode.<DiscoveryNode>find(
+                                "#DiscoveryNode.byTypeWithName",
+                                Parameters.with("nodeType", kind).and("name", name))
+                        .stream()
+                        .filter(DiscoveryNode::isDeleted)
+                        .filter(predicate)
+                        .findFirst();
+
+        if (deletedNode.isPresent()) {
+            return QuarkusTransaction.joiningExisting()
+                    .call(
+                            () -> {
+                                DiscoveryNode node = deletedNode.get();
+                                node.undelete();
+                                customizer.accept(node);
+                                node.persist();
+                                return node;
+                            });
+        }
+
+        // Create new node if none found
+        return QuarkusTransaction.joiningExisting()
+                .call(
+                        () -> {
+                            DiscoveryNode node = new DiscoveryNode();
+                            node.name = name;
+                            node.nodeType = kind;
+                            node.labels = new HashMap<>();
+                            node.children = new ArrayList<>();
+                            node.target = null;
+                            customizer.accept(node);
+                            node.persist();
+                            return node;
+                        });
     }
 
     public static List<DiscoveryNode> findAllByNodeType(NodeType nodeType) {
@@ -300,13 +358,38 @@ public class DiscoveryNode extends PanacheEntity {
         }
 
         @PostPersist
-        void postPersist(DiscoveryNode node) {}
+        void postPersist(DiscoveryNode node) {
+            logger.debugv(
+                    "DiscoveryNode created: id={0}, name={1}, type={2}",
+                    node.id, node.name, node.nodeType);
+        }
 
         @PostUpdate
-        void postUpdate(DiscoveryNode node) {}
+        void postUpdate(DiscoveryNode node) {
+            // Check for soft-delete or undelete operations
+            if (node.softDeletePending) {
+                node.softDeletePending = false;
+                logger.infov(
+                        "DiscoveryNode soft-deleted: id={0}, name={1}, type={2}",
+                        node.id, node.name, node.nodeType);
+            } else if (node.undeletePending) {
+                node.undeletePending = false;
+                logger.infov(
+                        "DiscoveryNode undeleted: id={0}, name={1}, type={2}",
+                        node.id, node.name, node.nodeType);
+            } else {
+                logger.debugv(
+                        "DiscoveryNode updated: id={0}, name={1}, type={2}",
+                        node.id, node.name, node.nodeType);
+            }
+        }
 
         @PostRemove
-        void postRemove(DiscoveryNode node) {}
+        void postRemove(DiscoveryNode node) {
+            logger.infov(
+                    "DiscoveryNode hard-deleted: id={0}, name={1}, type={2}",
+                    node.id, node.name, node.nodeType);
+        }
     }
 
     public static class Views {

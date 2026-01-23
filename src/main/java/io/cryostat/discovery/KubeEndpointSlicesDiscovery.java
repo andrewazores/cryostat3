@@ -547,7 +547,8 @@ public class KubeEndpointSlicesDiscovery implements ResourceEventHandler<Endpoin
         }
 
         nsNode.persist();
-        target.delete();
+        target.softDelete();
+        target.persist();
     }
 
     private void buildOwnerChain(DiscoveryNode nsNode, Target target, ObjectReference targetRef) {
@@ -778,9 +779,10 @@ public class KubeEndpointSlicesDiscovery implements ResourceEventHandler<Endpoin
                                 "/jndi/rmi://" + addr + ':' + port.getPort() + "/jmxrmi");
                 URI connectUrl = URI.create(jmxUrl.toString());
 
-                Target target = new Target();
-                target.activeRecordings = new ArrayList<>();
-                target.connectUrl = connectUrl;
+                Target target = Target.createOrUndelete(connectUrl);
+                if (target.activeRecordings == null) {
+                    target.activeRecordings = new ArrayList<>();
+                }
                 target.alias = objRef.getName();
                 target.labels = (obj != null ? obj.getMetadata().getLabels() : new HashMap<>());
                 target.annotations =

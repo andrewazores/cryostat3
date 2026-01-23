@@ -156,19 +156,25 @@ public class Target extends PanacheEntity {
 
     /**
      * Soft-delete this target by setting the deletedAt timestamp to now. Does not persist the
-     * change automatically.
+     * change automatically. Sends a LOST notification when persisted.
      */
     public void softDelete() {
         this.deletedAt = Instant.now();
+        this.softDeletePending = true;
     }
 
     /**
      * Undelete this target by clearing the deletedAt timestamp. Does not persist the change
-     * automatically.
+     * automatically. Sends a FOUND notification when persisted.
      */
     public void undelete() {
         this.deletedAt = null;
+        this.undeletePending = true;
     }
+
+    @JsonIgnore private transient boolean softDeletePending = false;
+
+    @JsonIgnore private transient boolean undeletePending = false;
 
     @JsonIgnore
     public String targetId() {
@@ -445,7 +451,16 @@ public class Target extends PanacheEntity {
 
         @PostUpdate
         void postUpdate(Target target) {
-            notify(EventKind.MODIFIED, target);
+            // Check for soft-delete or undelete operations
+            if (target.softDeletePending) {
+                target.softDeletePending = false;
+                notify(EventKind.LOST, target);
+            } else if (target.undeletePending) {
+                target.undeletePending = false;
+                notify(EventKind.FOUND, target);
+            } else {
+                notify(EventKind.MODIFIED, target);
+            }
         }
 
         @PostRemove

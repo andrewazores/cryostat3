@@ -319,7 +319,8 @@ public abstract class ContainerDiscovery {
             }
 
             realm.persist();
-            target.delete();
+            target.softDelete();
+            target.persist();
         }
     }
 
@@ -513,9 +514,10 @@ public abstract class ContainerDiscovery {
                 return null;
             }
 
-            Target target = new Target();
-            target.activeRecordings = new ArrayList<>();
-            target.connectUrl = connectUrl;
+            Target target = Target.createOrUndelete(connectUrl);
+            if (target.activeRecordings == null) {
+                target.activeRecordings = new ArrayList<>();
+            }
             target.alias = Optional.ofNullable(desc.Names.get(0)).orElse(desc.Id);
             target.labels = desc.Labels;
             target.annotations =

@@ -29,11 +29,14 @@ import java.util.Optional;
 import io.cryostat.AbstractTransactionalTestBase;
 
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
 public class DiscoveryNodeSoftDeletionTest extends AbstractTransactionalTestBase {
+    @Inject EntityManager entityManager;
 
     @Test
     @Transactional
@@ -75,12 +78,13 @@ public class DiscoveryNodeSoftDeletionTest extends AbstractTransactionalTestBase
         DiscoveryNode deleted = createTestNode("deleted");
         deleted.persist();
         deleted.softDelete();
-        deleted.persist();
+        entityManager.flush();
+        entityManager.clear();
 
         List<DiscoveryNode> activeNodes = DiscoveryNode.findActive();
 
-        assertTrue(activeNodes.contains(active));
-        assertFalse(activeNodes.contains(deleted));
+        assertTrue(activeNodes.stream().anyMatch(n -> n.id.equals(active.id)));
+        assertFalse(activeNodes.stream().anyMatch(n -> n.id.equals(deleted.id)));
     }
 
     @Test
@@ -141,12 +145,13 @@ public class DiscoveryNodeSoftDeletionTest extends AbstractTransactionalTestBase
         DiscoveryNode deleted = createTestNode("deleted");
         deleted.persist();
         deleted.softDelete();
-        deleted.persist();
+        entityManager.flush();
+        entityManager.clear();
 
         List<DiscoveryNode> deletedNodes = DiscoveryNode.findDeleted();
 
-        assertFalse(deletedNodes.contains(active));
-        assertTrue(deletedNodes.contains(deleted));
+        assertFalse(deletedNodes.stream().anyMatch(n -> n.id.equals(active.id)));
+        assertTrue(deletedNodes.stream().anyMatch(n -> n.id.equals(deleted.id)));
     }
 
     private DiscoveryNode createTestNode() {
