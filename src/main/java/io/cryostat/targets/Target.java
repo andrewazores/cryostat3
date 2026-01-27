@@ -115,6 +115,7 @@ public class Target extends PanacheEntity {
 
     @OneToMany(
             mappedBy = "target",
+            fetch = FetchType.LAZY,
             cascade = {CascadeType.ALL},
             orphanRemoval = true)
     @NotNull
