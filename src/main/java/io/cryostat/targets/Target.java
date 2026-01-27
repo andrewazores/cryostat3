@@ -45,6 +45,7 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.NamedQueries;
@@ -121,6 +122,7 @@ public class Target extends PanacheEntity {
     public List<ActiveRecording> activeRecordings = new ArrayList<>();
 
     @OneToOne(
+            fetch = FetchType.LAZY,
             cascade = {CascadeType.ALL},
             orphanRemoval = true)
     @JoinColumn(name = "discoveryNode")
