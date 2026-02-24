@@ -84,6 +84,13 @@
         <scope>import</scope>
       </dependency>
       <dependency>
+        <groupId>${quarkus.platform.group-id}</groupId>
+        <artifactId>quarkus-langchain4j-bom</artifactId>
+        <version>${quarkus.platform.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <groupId>org.projectnessie.cel</groupId>
         <artifactId>cel-bom</artifactId>
         <version>${org.projectnessie.cel.bom.version}</version>
@@ -287,6 +294,10 @@
     <dependency>
       <groupId>io.quarkiverse.amazonservices</groupId>
       <artifactId>quarkus-amazon-s3-transfer-manager</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-ollama</artifactId>
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
