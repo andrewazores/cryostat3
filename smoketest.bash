@@ -10,6 +10,7 @@ export DIR
 
 FILES=(
     "${DIR}/compose/db.yml"
+    "${DIR}/compose/ollama.yml"
 )
 
 USE_USERHOSTS=${USE_USERHOSTS:-true}
