@@ -16,10 +16,14 @@
 package io.cryostat.reports;
 
 import java.time.Instant;
+import java.util.AbstractMap;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.openjdk.jmc.flightrecorder.rules.IRule;
@@ -29,6 +33,8 @@ import org.openjdk.jmc.flightrecorder.rules.util.RulesToolkit.EventAvailability;
 import io.cryostat.ConfigProperties;
 import io.cryostat.StorageBuckets;
 import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult;
+import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult.Evaluation;
+import io.cryostat.llm.LLM;
 import io.cryostat.recordings.LongRunningRequestGenerator;
 import io.cryostat.recordings.LongRunningRequestGenerator.ActiveReportRequest;
 import io.cryostat.recordings.LongRunningRequestGenerator.ArchiveRequest;
@@ -36,6 +42,8 @@ import io.cryostat.recordings.LongRunningRequestGenerator.ArchivedReportRequest;
 import io.cryostat.recordings.RecordingHelper;
 import io.cryostat.targets.Target;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
@@ -80,6 +88,8 @@ public class Reports {
     @Inject ReportsService reportsService;
     @Inject AnalysisReportAggregator reportAggregator;
     @Inject EventBus bus;
+    @Inject ObjectMapper mapper;
+    @Inject LLM llm;
     @Inject Logger logger;
 
     // FIXME this observer cannot be declared on the StorageCachingReportsService decorator.
@@ -234,6 +244,56 @@ public class Reports {
 
     @GET
     @Blocking
+    @Path("/api/v4.1/targets/{targetId}/reports/llm")
+    @RolesAllowed("read")
+    public Uni<Object> llmReport(
+            @RestPath long targetId,
+            @QueryParam("minScore") @DefaultValue("25.0") double minScore) {
+        var target = Target.getTargetById(targetId);
+        return reportAggregator
+                .getEntry(target.jvmId)
+                .onItem()
+                .transform(
+                        report -> {
+                            return report.report().entrySet().stream()
+                                    .filter(e -> e.getValue().getScore() > minScore)
+                                    .map(
+                                            e -> {
+                                                try {
+                                                    return new AbstractMap.SimpleEntry<>(
+                                                            e.getKey(),
+                                                            new AugmentedAnalysisResponse(
+                                                                    mapper.readValue(
+                                                                            llm
+                                                                                    .analyzeAutomatedAnalysis(
+                                                                                            mapper
+                                                                                                    .writeValueAsString(
+                                                                                                            e
+                                                                                                                    .getValue())),
+                                                                            LLMAnalysisResponse
+                                                                                    .class),
+                                                                    e.getValue().getName(),
+                                                                    e.getValue().getTopic(),
+                                                                    e.getValue().getScore(),
+                                                                    e.getValue().getEvaluation()));
+                                                } catch (JsonProcessingException jpe) {
+                                                    logger.error(jpe);
+                                                    return new AbstractMap.SimpleEntry<>(
+                                                            e.getKey(),
+                                                            new AugmentedAnalysisResponse(
+                                                                    LLMAnalysisResponse.FAILED,
+                                                                    e.getValue().getName(),
+                                                                    e.getValue().getTopic(),
+                                                                    e.getValue().getScore(),
+                                                                    e.getValue().getEvaluation()));
+                                                }
+                                            })
+                                    .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+                        });
+    }
+
+    @GET
+    @Blocking
     @Path("/api/v4/targets/{targetId}/reports/{recordingId}")
     @RolesAllowed("read")
     @Operation(
@@ -304,5 +364,17 @@ public class Reports {
         ReportRule(IRule rule) {
             this(rule.getId(), rule.getName(), rule.getTopic(), rule.getRequiredEvents());
         }
+    }
+
+    static record AugmentedAnalysisResponse(
+            LLMAnalysisResponse llmAnalysis,
+            String name,
+            String topic,
+            double score,
+            Evaluation evaluation) {}
+
+    static record LLMAnalysisResponse(String summary, String role, List<String> suggestions) {
+        static LLMAnalysisResponse FAILED =
+                new LLMAnalysisResponse("temporary_failure", "N/A", List.of());
     }
 }
