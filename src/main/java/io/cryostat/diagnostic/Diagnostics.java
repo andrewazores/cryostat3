@@ -97,6 +97,7 @@ public class Diagnostics {
 
     @Inject EventBus bus;
     @Inject DiagnosticsHelper helper;
+    @Inject DiagnosticsLLM llm;
 
     @Path("fs/threaddumps")
     @RolesAllowed("read")
@@ -154,6 +155,27 @@ public class Diagnostics {
     public List<ThreadDump> getThreadDumps(@RestPath long targetId) {
         log.tracev("Fetching thread dumps for target: {0}", targetId);
         return helper.getThreadDumps(Target.getTargetById(targetId));
+    }
+
+    @GET
+    @Blocking
+    @Transactional
+    @Path("targets/{targetId}/threaddump/{threadDumpId}/llm")
+    @RolesAllowed("read")
+    public String llmAnalyzeThreadDump(@RestPath long targetId, @RestPath String threadDumpId) {
+        log.tracev("Analyzing thread dump with ID: {0}", threadDumpId);
+        String filename = threadDumpId;
+        Target target = Target.getTargetById(targetId);
+
+        String encodedKey = helper.encodedKey(target.jvmId, filename);
+        Pair<String, String> decodedKey = helper.decodedKey(encodedKey);
+        log.tracev("Handling download Request for key: {0}", decodedKey);
+        log.tracev("Handling download Request for query: {0}", filename);
+        String key = helper.storageKey(decodedKey);
+        storage.headObject(HeadObjectRequest.builder().bucket(threadDumpsBucket).key(key).build())
+                .sdkHttpResponse();
+
+        return llm.analyze(helper.getThreadDumpStream(encodedKey));
     }
 
     @DELETE
