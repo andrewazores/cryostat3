@@ -15,6 +15,7 @@
  */
 package io.cryostat.diagnostic;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import io.cryostat.ConfigProperties;
+import io.cryostat.llm.LLM;
 import io.cryostat.recordings.ActiveRecordings.Metadata;
 import io.cryostat.recordings.LongRunningRequestGenerator;
 import io.cryostat.recordings.LongRunningRequestGenerator.HeapDumpRequest;
@@ -39,6 +41,7 @@ import io.cryostat.util.HttpMimeType;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.smallrye.common.annotation.Blocking;
+import io.smallrye.mutiny.Multi;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.eventbus.EventBus;
@@ -97,7 +100,7 @@ public class Diagnostics {
 
     @Inject EventBus bus;
     @Inject DiagnosticsHelper helper;
-    @Inject DiagnosticsLLM llm;
+    @Inject LLM llm;
 
     @Path("fs/threaddumps")
     @RolesAllowed("read")
@@ -162,7 +165,8 @@ public class Diagnostics {
     @Transactional
     @Path("targets/{targetId}/threaddump/{threadDumpId}/llm")
     @RolesAllowed("read")
-    public String llmAnalyzeThreadDump(@RestPath long targetId, @RestPath String threadDumpId) {
+    public Multi<String> llmAnalyzeThreadDump(
+            @RestPath long targetId, @RestPath String threadDumpId) throws IOException {
         log.tracev("Analyzing thread dump with ID: {0}", threadDumpId);
         String filename = threadDumpId;
         Target target = Target.getTargetById(targetId);
@@ -175,7 +179,9 @@ public class Diagnostics {
         storage.headObject(HeadObjectRequest.builder().bucket(threadDumpsBucket).key(key).build())
                 .sdkHttpResponse();
 
-        return llm.analyze(helper.getThreadDumpStream(encodedKey));
+        try (var stream = helper.getThreadDumpStream(encodedKey)) {
+            return llm.analyzeThreadDump(new String(stream.readAllBytes()));
+        }
     }
 
     @DELETE
