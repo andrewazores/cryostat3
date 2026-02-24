@@ -1,0 +1,20 @@
+services:
+  cryostat:
+    environment:
+      - QUARKUS_LANGCHAIN4J_OLLAMA_BASE_URL=http://ollama:11434
+      - QUARKUS_LANGCHAIN4J_OLLAMA_CHAT_MODEL_MODEL_ID=phi3:mini
+      - QUARKUS_LANGCHAIN4J_OLLAMA_EMBEDDING_MODEL_MODEL_ID=phi3:mini
+      - QUARKUS_LANGCHAIN4J_OLLAMA_LOG_REQUESTS=true
+      - QUARKUS_LANGCHAIN4J_OLLAMA_LOG_RESPONSES=true
+  ollama:
+    image: ${CRYOSTAT_OLLAMA_IMAGE:-ollama/ollama:latest}
+    hostname: ollama
+    expose:
+      - "11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: always
+
+volumes:
+  ollama:
+    driver: local
