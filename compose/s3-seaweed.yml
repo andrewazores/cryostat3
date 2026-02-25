@@ -13,6 +13,7 @@ services:
       AWS_ACCESS_KEY_ID: access_key
       AWS_SECRET_ACCESS_KEY: secret_key
   s3:
+    init: true
     image: ${STORAGE_IMAGE:-quay.io/cryostat/cryostat-storage:${CRYOSTAT_VERSION:-latest}}
     hostname: s3
     environment:
