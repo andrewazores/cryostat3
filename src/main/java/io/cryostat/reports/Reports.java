@@ -370,8 +370,19 @@ public class Reports {
             Evaluation evaluation) {}
 
     public static record LLMAnalysisResponse(
-            String summary, String role, List<String> suggestions) {
+            String summary, List<String> roles, List<String> suggestions) {
         static LLMAnalysisResponse FAILED =
-                new LLMAnalysisResponse("temporary_failure", "N/A", List.of());
+                new LLMAnalysisResponse("temporary_failure", List.of(), List.of());
+
+        public LLMAnalysisResponse(String summary, List<String> roles, List<String> suggestions) {
+            this.summary = summary;
+            this.roles =
+                    roles.stream()
+                            .map(String::strip)
+                            .map(s -> s.replaceAll("\\s+", "_"))
+                            .map(String::toUpperCase)
+                            .toList();
+            this.suggestions = suggestions;
+        }
     }
 }
