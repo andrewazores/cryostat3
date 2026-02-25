@@ -44,18 +44,7 @@ public interface LLM {
             """)
     Multi<String> analyzeThreadDump(String threadDump);
 
-    @SystemMessage(
-            """
-            You are acting as a JSON analysis engine.
-            Each message you receive will be a JSON document representing a Java application's
-            analysis results based on JDK Flight Recorder data. Analyze the document.
-            For each detected issue, summarize the problem, provide brief instructions
-            to attempt a fix, and assign a role (app SRE, system admin, database admin,
-            developer, etc.) to the fix task.
-            """)
-    @UserMessage(
-            """
-            {report}
-            """)
+    @SystemMessage(fromResource = "io/cryostat/llm/automated-analysis.system-prompt")
+    @UserMessage("{report}")
     LLMAnalysisResponse analyzeAutomatedAnalysis(String report);
 }
