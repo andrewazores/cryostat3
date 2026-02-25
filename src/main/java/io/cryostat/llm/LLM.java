@@ -15,6 +15,8 @@
  */
 package io.cryostat.llm;
 
+import io.cryostat.reports.Reports.LLMAnalysisResponse;
+
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import io.quarkiverse.langchain4j.RegisterAiService;
@@ -50,18 +52,10 @@ public interface LLM {
             For each detected issue, summarize the problem, provide brief instructions
             to attempt a fix, and assign a role (app SRE, system admin, database admin,
             developer, etc.) to the fix task.
-            Do not include any additional formatting, markdown syntax, or other syntax other
-            than the raw JSON.
-            Respond with a JSON document with this format:
-            {
-                "summary": "your summary as a string",
-                "suggestions": ["your suggestions", "each suggestion is a string", "suggestions separated by commas"],
-                "role": "user role as a job title"
-            }
             """)
     @UserMessage(
             """
             {report}
             """)
-    String analyzeAutomatedAnalysis(String report);
+    LLMAnalysisResponse analyzeAutomatedAnalysis(String report);
 }
