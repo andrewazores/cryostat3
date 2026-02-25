@@ -263,15 +263,11 @@ public class Reports {
                                                     return new AbstractMap.SimpleEntry<>(
                                                             e.getKey(),
                                                             new AugmentedAnalysisResponse(
-                                                                    mapper.readValue(
-                                                                            llm
-                                                                                    .analyzeAutomatedAnalysis(
-                                                                                            mapper
-                                                                                                    .writeValueAsString(
-                                                                                                            e
-                                                                                                                    .getValue())),
-                                                                            LLMAnalysisResponse
-                                                                                    .class),
+                                                                    llm.analyzeAutomatedAnalysis(
+                                                                            mapper
+                                                                                    .writeValueAsString(
+                                                                                            e
+                                                                                                    .getValue())),
                                                                     e.getValue().getName(),
                                                                     e.getValue().getTopic(),
                                                                     e.getValue().getScore(),
@@ -373,7 +369,8 @@ public class Reports {
             double score,
             Evaluation evaluation) {}
 
-    static record LLMAnalysisResponse(String summary, String role, List<String> suggestions) {
+    public static record LLMAnalysisResponse(
+            String summary, String role, List<String> suggestions) {
         static LLMAnalysisResponse FAILED =
                 new LLMAnalysisResponse("temporary_failure", "N/A", List.of());
     }
