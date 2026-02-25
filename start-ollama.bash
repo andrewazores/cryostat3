@@ -7,6 +7,6 @@ podman run --rm -it --replace \
     --name "${OLLAMA_CONTAINER_NAME:-ollama}" \
     -p "${PORT}:${PORT}" \
     -v "${OLLAMA_VOLUME_NAME:-ollama}":/root/.ollama \
-    --cpus "${OLLAMA_CPU_LIMIT:-8.0}" \
-    --memory "${OLLAMA_MEM_LIMIT:-16GiB}" \
+    --cpus "${OLLAMA_CPU_LIMIT:-4.0}" \
+    --memory "${OLLAMA_MEM_LIMIT:-4GiB}" \
     ollama
