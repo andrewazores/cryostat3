@@ -6,14 +6,15 @@ services:
       - QUARKUS_LANGCHAIN4J_OLLAMA_LOG_REQUESTS=true
       - QUARKUS_LANGCHAIN4J_OLLAMA_LOG_RESPONSES=true
   ollama:
+    init: true
     image: ${CRYOSTAT_OLLAMA_IMAGE:-ollama/ollama:latest}
     hostname: ollama
+    restart: always
     expose:
       - "11434"
     volumes:
       - ollama:/root/.ollama
-    restart: always
 
 volumes:
   ollama:
-    driver: local
+    external: true
