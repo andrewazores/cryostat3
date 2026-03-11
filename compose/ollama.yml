@@ -1,5 +1,8 @@
 services:
   cryostat:
+    depends_on:
+      ollama:
+        condition: service_healthy
     environment:
       QUARKUS_LANGCHAIN4J_OLLAMA_BASE_URL: http://ollama:11434
       QUARKUS_LANGCHAIN4J_OLLAMA_LOG_REQUESTS: "true"
@@ -11,8 +14,16 @@ services:
     restart: always
     expose:
       - "11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0
     volumes:
       - ollama:/root/.ollama
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/11434' || exit 1
+      interval: 10s
+      retries: 3
+      start_period: 10s
+      timeout: 10s
 
 volumes:
   ollama:
