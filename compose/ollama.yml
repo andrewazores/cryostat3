@@ -8,6 +8,11 @@ services:
       QUARKUS_LANGCHAIN4J_OLLAMA_LOG_REQUESTS: "true"
       QUARKUS_LANGCHAIN4J_OLLAMA_LOG_RESPONSES: "true"
   ollama:
+    deploy:
+      resources:
+        limits:
+          cpus: "6"
+          memory: 24GiB
     init: true
     image: ${CRYOSTAT_OLLAMA_IMAGE:-ollama/ollama:latest}
     hostname: ollama
@@ -16,6 +21,7 @@ services:
       - "11434"
     environment:
       OLLAMA_HOST: 0.0.0.0
+      OLLAMA_NUM_THREADS: "6"
       OLLAMA_KEEP_ALIVE: "-1"
     volumes:
       - ollama:/root/.ollama
