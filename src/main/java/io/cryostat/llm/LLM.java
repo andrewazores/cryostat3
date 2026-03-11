@@ -28,6 +28,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public interface LLM {
 
+    @SystemMessage("model")
+    @UserMessage("awaken")
+    String preload();
+
     @SystemMessage(
             """
             You are a first line technical support engineer at an enterprise software company.

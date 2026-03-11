@@ -98,6 +98,7 @@ public class Reports {
         if (storageCacheEnabled) {
             storageBuckets.createIfNecessary(bucket);
         }
+        llm.preload();
     }
 
     @GET
