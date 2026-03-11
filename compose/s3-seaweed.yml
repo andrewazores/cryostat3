@@ -41,7 +41,7 @@ services:
         - :> /dev/tcp/127.0.0.1/8333
       interval: 10s
       retries: 3
-      start_period: 30s
+      start_period: 10s
       timeout: 5s
 
 volumes:
