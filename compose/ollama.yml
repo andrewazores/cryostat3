@@ -11,8 +11,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "6"
-          memory: 24GiB
+          cpus: ${OLLAMA_CPUS:-32}
+          memory: ${OLLAMA_MEM_GB:-32}GiB
     init: true
     image: ${CRYOSTAT_OLLAMA_IMAGE:-ollama/ollama:latest}
     hostname: ollama
@@ -21,7 +21,7 @@ services:
       - "11434"
     environment:
       OLLAMA_HOST: 0.0.0.0
-      OLLAMA_NUM_THREADS: "6"
+      OLLAMA_NUM_THREADS: ${OLLAMA_CPUS:-32}
       OLLAMA_KEEP_ALIVE: "-1"
     volumes:
       - ollama:/root/.ollama
