@@ -300,6 +300,10 @@
       <artifactId>quarkus-langchain4j-ollama</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.quarkiverse.langchain4j</groupId>
+      <artifactId>quarkus-langchain4j-mcp</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-kubernetes-client</artifactId>
     </dependency>

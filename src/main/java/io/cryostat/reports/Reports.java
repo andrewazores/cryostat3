@@ -44,6 +44,7 @@ import io.cryostat.recordings.RecordingHelper;
 import io.cryostat.targets.Target;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.mcp.client.logging.McpLogMessage;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
@@ -99,6 +100,11 @@ public class Reports {
             storageBuckets.createIfNecessary(bucket);
         }
         llm.preload();
+    }
+
+    public void onAnyMcpLog(@Observes McpLogMessage logMessage) {
+        logger.infov(
+                "MCP [{0} {1}]: {2}", logMessage.logger(), logMessage.level(), logMessage.data());
     }
 
     @GET

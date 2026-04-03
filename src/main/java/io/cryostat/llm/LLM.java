@@ -29,7 +29,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 public interface LLM {
 
     @SystemMessage("model")
-    @UserMessage("awaken")
+    @UserMessage("list available MCP tools")
+    // @McpToolBox("cryostat")
     String preload();
 
     @SystemMessage(
@@ -50,5 +51,6 @@ public interface LLM {
 
     @SystemMessage(fromResource = "io/cryostat/llm/automated-analysis.system-prompt")
     @UserMessage("{report}")
+    // @McpToolBox("cryostat")
     LLMAnalysisResponse analyzeAutomatedAnalysis(String report);
 }

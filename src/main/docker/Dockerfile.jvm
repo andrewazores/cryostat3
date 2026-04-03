@@ -118,6 +118,9 @@ COPY --chown=185 src/main/docker/include/entrypoint.bash /deployments/app/
 COPY --chown=185 src/main/docker/include/truststore-setup.bash /deployments/app/
 COPY --chown=185 src/main/docker/include/keystore-setup.bash /deployments/app/
 
+# RUN mkdir /deployments/app/mcp
+# COPY cryostat-mcp-runner.jar /deployments/app/mcp/
+
 RUN /deployments/app/truststore-setup.bash
 RUN /deployments/app/keystore-setup.bash
 
