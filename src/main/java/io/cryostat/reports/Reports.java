@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -42,7 +43,6 @@ import io.cryostat.recordings.LongRunningRequestGenerator.ArchivedReportRequest;
 import io.cryostat.recordings.RecordingHelper;
 import io.cryostat.targets.Target;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
@@ -273,8 +273,8 @@ public class Reports {
                                                                     e.getValue().getTopic(),
                                                                     e.getValue().getScore(),
                                                                     e.getValue().getEvaluation()));
-                                                } catch (JsonProcessingException jpe) {
-                                                    logger.error(jpe);
+                                                } catch (Exception e2) {
+                                                    logger.error(e2);
                                                     return new AbstractMap.SimpleEntry<>(
                                                             e.getKey(),
                                                             new AugmentedAnalysisResponse(
@@ -371,19 +371,22 @@ public class Reports {
             Evaluation evaluation) {}
 
     public static record LLMAnalysisResponse(
-            String summary, List<String> roles, List<String> suggestions) {
+            String summary, List<String> triageRoles, List<String> suggestions) {
         static LLMAnalysisResponse FAILED =
                 new LLMAnalysisResponse("temporary_failure", List.of(), List.of());
 
-        public LLMAnalysisResponse(String summary, List<String> roles, List<String> suggestions) {
-            this.summary = summary;
-            this.roles =
-                    roles.stream()
+        public LLMAnalysisResponse(
+                Optional<String> summary,
+                Optional<List<String>> triageRoles,
+                Optional<List<String>> suggestions) {
+            this(
+                    summary.orElse("N/A"),
+                    triageRoles.orElse(List.of()).stream()
                             .map(String::strip)
                             .map(s -> s.replaceAll("\\s+", "_"))
                             .map(String::toUpperCase)
-                            .toList();
-            this.suggestions = suggestions;
+                            .toList(),
+                    suggestions.orElse(List.of()));
         }
     }
 }
