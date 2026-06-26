@@ -1040,9 +1040,7 @@ public class RecordingHelper {
                 .run(
                         () ->
                                 ArchivedRecordingInfo.of(
-                                                recording.target.jvmId,
-                                                filename,
-                                                recording.id.longValue())
+                                                recording.target.jvmId, filename, recording.id)
                                         .persist());
         ArchivedRecording archivedRecording =
                 getArchivedRecordingInfo(recording.target.jvmId, filename).orElseThrow();
