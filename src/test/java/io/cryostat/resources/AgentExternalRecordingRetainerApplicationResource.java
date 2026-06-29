@@ -1,0 +1,47 @@
+/*
+ * Copyright The Cryostat Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.cryostat.resources;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Test resource that starts an agent container with a short fixed-duration {@code
+ * -XX:StartFlightRecording} flag. Used to test the retainer recording strategy: Cryostat should
+ * detect the flag via JVM input arguments, start a {@code cryostat-retainer} continuous recording,
+ * and schedule a {@link io.cryostat.recordings.RetainerHarvestJob} to snapshot, archive, and clean
+ * up after the external recording's duration elapses.
+ */
+public class AgentExternalRecordingRetainerApplicationResource extends AgentApplicationResource {
+
+    public static final String RECORDING_NAME = "retainer-test";
+    public static final int RECORDING_DURATION_SECONDS = 15;
+
+    @Override
+    protected Map<String, String> getEnvMap() {
+        Map<String, String> envMap = new HashMap<>(super.getEnvMap());
+
+        String baseJavaOpts = envMap.get("JAVA_OPTS_APPEND");
+        String recordingOpts =
+                String.format(
+                        "-XX:StartFlightRecording=name=%s,duration=%ds",
+                        RECORDING_NAME, RECORDING_DURATION_SECONDS);
+
+        envMap.put("JAVA_OPTS_APPEND", (baseJavaOpts + " " + recordingOpts).strip());
+
+        return envMap;
+    }
+}

@@ -56,7 +56,7 @@ public class TargetUpdateService {
     @Inject Scheduler scheduler;
     @Inject MatchExpressionEvaluator matchExpressionEvaluator;
 
-    @ConfigProperty(name = ConfigProperties.EXTERNAL_RECORDINGS_DELAY)
+    @ConfigProperty(name = ConfigProperties.RETAINER_DELAY)
     Duration externalRecordingDelay;
 
     @Transactional

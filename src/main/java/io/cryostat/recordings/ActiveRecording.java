@@ -188,7 +188,7 @@ public class ActiveRecording extends PanacheEntity {
         @Inject Event<ActiveRecordingEvents.ActiveRecordingDeleted> deletedEvent;
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-        @ConfigProperty(name = ConfigProperties.EXTERNAL_RECORDINGS_ARCHIVE)
+        @ConfigProperty(name = ConfigProperties.RETAINER_ARCHIVE)
         boolean archiveExternal;
 
         @PostPersist

@@ -165,6 +165,101 @@ public class RecordingHelper {
     private static final Pattern TEMPLATE_PATTERN =
             Pattern.compile("^template=([\\w]+)(?:,type=([\\w]+))?$");
     public static final String DATASOURCE_FILENAME = "cryostat-analysis.jfr";
+    private static final String START_FLIGHT_RECORDING_PREFIX = "-XX:StartFlightRecording=";
+
+    /**
+     * Parse all {@code -XX:StartFlightRecording=<params>} entries from a JVM's input arguments.
+     *
+     * @param inputArguments the array returned by {@link
+     *     java.lang.management.RuntimeMXBean#getInputArguments()}
+     * @return one {@link ExternalRecordingDescriptor} per flag occurrence; empty list if none found
+     */
+    public static List<ExternalRecordingDescriptor> parseStartFlightRecordingArgs(
+            String[] inputArguments) {
+        if (inputArguments == null) {
+            return List.of();
+        }
+        List<ExternalRecordingDescriptor> result = new ArrayList<>();
+        for (String arg : inputArguments) {
+            if (!arg.startsWith(START_FLIGHT_RECORDING_PREFIX)) {
+                continue;
+            }
+            String params = arg.substring(START_FLIGHT_RECORDING_PREFIX.length());
+            String name = "";
+            String settings = "";
+            long durationMs = 0L;
+            boolean disk = true;
+            long maxSizeBytes = 0L;
+            long maxAgeMs = 0L;
+            for (String token : params.split(",")) {
+                int eq = token.indexOf('=');
+                if (eq < 0) {
+                    continue;
+                }
+                String key = token.substring(0, eq).trim().toLowerCase();
+                String value = token.substring(eq + 1).trim();
+                switch (key) {
+                    case "name" -> name = value;
+                    case "settings" -> settings = value;
+                    case "duration" -> durationMs = parseDurationToMillis(value);
+                    case "disk" -> disk = Boolean.parseBoolean(value);
+                    case "maxsize" -> maxSizeBytes = parseSizeToBytes(value);
+                    case "maxage" -> maxAgeMs = parseDurationToMillis(value);
+                    default -> {}
+                }
+            }
+            result.add(
+                    new ExternalRecordingDescriptor(
+                            name, settings, durationMs, disk, maxSizeBytes, maxAgeMs));
+        }
+        return result;
+    }
+
+    private static long parseDurationToMillis(String value) {
+        if (value == null || value.isBlank()) {
+            return 0L;
+        }
+        try {
+            if (value.endsWith("ms")) {
+                return Long.parseLong(value.substring(0, value.length() - 2).trim());
+            } else if (value.endsWith("s")) {
+                return TimeUnit.SECONDS.toMillis(
+                        Long.parseLong(value.substring(0, value.length() - 1).trim()));
+            } else if (value.endsWith("m")) {
+                return TimeUnit.MINUTES.toMillis(
+                        Long.parseLong(value.substring(0, value.length() - 1).trim()));
+            } else if (value.endsWith("h")) {
+                return TimeUnit.HOURS.toMillis(
+                        Long.parseLong(value.substring(0, value.length() - 1).trim()));
+            } else {
+                return Long.parseLong(value.trim());
+            }
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private static long parseSizeToBytes(String value) {
+        if (value == null || value.isBlank()) {
+            return 0L;
+        }
+        try {
+            long k = 1024;
+            String v = value.trim().toLowerCase();
+            String size = v.substring(0, v.length() - 1);
+            if (v.endsWith("k")) {
+                return Long.parseLong(size) * k;
+            } else if (v.endsWith("m")) {
+                return Long.parseLong(size) * k * k;
+            } else if (v.endsWith("g")) {
+                return Long.parseLong(size) * k * k * k;
+            } else {
+                return Long.parseLong(v);
+            }
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
 
     @Inject S3Client storage;
     @Inject S3TransferManager transferManager;
@@ -208,11 +303,17 @@ public class RecordingHelper {
     @ConfigProperty(name = ConfigProperties.GRAFANA_DATASOURCE_URL)
     Optional<String> grafanaDatasourceURLProperty;
 
-    @ConfigProperty(name = ConfigProperties.EXTERNAL_RECORDINGS_AUTOANALYZE)
+    @ConfigProperty(name = ConfigProperties.RETAINER_AUTOANALYZE)
     boolean externalRecordingAutoanalyze;
 
-    @ConfigProperty(name = ConfigProperties.EXTERNAL_RECORDINGS_ARCHIVE)
+    @ConfigProperty(name = ConfigProperties.RETAINER_ARCHIVE)
     boolean externalRecordingArchive;
+
+    @ConfigProperty(name = ConfigProperties.RETAINER_TEMPLATE)
+    String retainerTemplate;
+
+    @ConfigProperty(name = ConfigProperties.RETAINER_DELAY)
+    Duration retainerDelay;
 
     @ConfigProperty(name = ConfigProperties.JFR_DATASOURCE_USE_PRESIGNED_TRANSFER)
     boolean usePresignedTransfer;
@@ -419,6 +520,7 @@ public class RecordingHelper {
             if (updated) {
                 target.persist();
             }
+            startRetainerIfNeeded(target);
         } catch (Exception e) {
             logger.errorv(
                     e,
@@ -1606,6 +1708,193 @@ public class RecordingHelper {
                 }
             }
             throw new IllegalArgumentException("Invalid recording replace value: " + replace);
+        }
+    }
+
+    public static final String RETAINER_RECORDING_NAME = "cryostat-retainer";
+
+    /**
+     * Create a snapshot of all data accumulated by the {@code cryostat-retainer} recording, archive
+     * it, then delete the snapshot and the retainer recording.
+     *
+     * <p>If {@code retainerRecording} is {@code null} (e.g. it was manually deleted), the snapshot
+     * and archive steps are still attempted; only the retainer delete is skipped.
+     *
+     * <p>If snapshot creation fails because there is no source data, the archive step is skipped
+     * but the retainer is still deleted.
+     */
+    public Uni<Void> harvestRetainer(Target target, ActiveRecording retainerRecording) {
+        Uni<Void> snapshotAndArchive =
+                createSnapshot(target)
+                        .chain(
+                                snapshot -> {
+                                    try {
+                                        archiveRecording(snapshot);
+                                    } catch (Exception e) {
+                                        logger.warnv(
+                                                e,
+                                                "Failed to archive retainer snapshot for target"
+                                                        + " {0}",
+                                                target.connectUrl);
+                                    }
+                                    return deleteRecording(snapshot)
+                                            .onFailure()
+                                            .recoverWithItem(
+                                                    e -> {
+                                                        logger.warnv(
+                                                                e,
+                                                                "Failed to delete retainer snapshot"
+                                                                        + " for target {0}",
+                                                                target.connectUrl);
+                                                        return snapshot;
+                                                    })
+                                            .replaceWithVoid();
+                                })
+                        .onFailure(SnapshotCreationException.class)
+                        .recoverWithUni(
+                                e -> {
+                                    logger.warnv(
+                                            e,
+                                            "Snapshot creation failed for retainer harvest on"
+                                                    + " target {0}, no source data available",
+                                            target.connectUrl);
+                                    return Uni.createFrom().voidItem();
+                                });
+
+        return snapshotAndArchive.chain(
+                ignored -> {
+                    if (retainerRecording == null) {
+                        return Uni.createFrom().voidItem();
+                    }
+                    return deleteRecording(retainerRecording)
+                            .onFailure()
+                            .recoverWithUni(
+                                    e -> {
+                                        logger.warnv(
+                                                e,
+                                                "Failed to delete retainer recording for target"
+                                                        + " {0}",
+                                                target.connectUrl);
+                                        return Uni.createFrom().item(retainerRecording);
+                                    })
+                            .replaceWithVoid();
+                });
+    }
+
+    /**
+     * If the target has any fixed-duration {@code -XX:StartFlightRecording} JVM arguments, start a
+     * {@code cryostat-retainer} continuous recording (if not already running) and schedule a {@link
+     * RetainerHarvestJob} to fire when the longest one is expected to end.
+     *
+     * <p>If there are no fixed-duration external recordings, this method returns immediately
+     * without starting any recording or scheduling any job.
+     */
+    void startRetainerIfNeeded(Target target) {
+        String[] inputArgs;
+        try {
+            inputArgs =
+                    connectionManager.executeConnectedTask(
+                            target,
+                            conn -> conn.getMBeanMetrics().getRuntime().getInputArguments());
+        } catch (Exception e) {
+            logger.warnv(
+                    e,
+                    "Failed to read JVM input arguments for target {0}, skipping retainer setup",
+                    target.connectUrl);
+            return;
+        }
+
+        var finiteDuration =
+                parseStartFlightRecordingArgs(inputArgs).stream()
+                        .filter(d -> d.durationMs() > 0)
+                        .toList();
+        if (finiteDuration.isEmpty()) {
+            return;
+        }
+
+        boolean retainerExists =
+                getActiveRecording(target, r -> RETAINER_RECORDING_NAME.equals(r.name)).isPresent();
+        ActiveRecording retainerRecording = null;
+        if (!retainerExists) {
+            try {
+                Template template =
+                        getPreferredTemplate(target, retainerTemplate, TemplateType.TARGET);
+                retainerRecording =
+                        startRecording(
+                                        target,
+                                        RecordingReplace.NEVER,
+                                        template,
+                                        RecordingOptions.empty(RETAINER_RECORDING_NAME),
+                                        Map.of())
+                                .await()
+                                .atMost(connectionFailedTimeout);
+            } catch (Exception e) {
+                logger.warnv(
+                        e, "Failed to start retainer recording for target {0}", target.connectUrl);
+                return;
+            }
+        } else {
+            retainerRecording =
+                    getActiveRecording(target, r -> RETAINER_RECORDING_NAME.equals(r.name))
+                            .orElse(null);
+        }
+        if (retainerRecording == null) {
+            logger.warnv(
+                    "Could not obtain retainer recording for target {0}, skipping harvest job",
+                    target.connectUrl);
+            return;
+        }
+
+        long maxEndTimeMs =
+                finiteDuration.stream()
+                        .mapToLong(
+                                d -> {
+                                    long start = System.currentTimeMillis();
+                                    return start + d.durationMs();
+                                })
+                        .max()
+                        .orElse(0L);
+        long harvestTimeMs = maxEndTimeMs + retainerDelay.toMillis();
+
+        var jobKey =
+                org.quartz.JobKey.jobKey(
+                        target.jvmId != null ? target.jvmId : Long.toString(target.id),
+                        RetainerHarvestJob.JOB_GROUP);
+        try {
+            if (scheduler.checkExists(jobKey)) {
+                var existingTriggers = scheduler.getTriggersOfJob(jobKey);
+                boolean shouldReschedule =
+                        existingTriggers.isEmpty()
+                                || existingTriggers.get(0).getNextFireTime() == null
+                                || existingTriggers.get(0).getNextFireTime().getTime()
+                                        < harvestTimeMs;
+                if (!shouldReschedule) {
+                    return;
+                }
+                scheduler.deleteJob(jobKey);
+            }
+
+            final long retainerRecordingId = retainerRecording.id;
+            var jobDetail =
+                    org.quartz.JobBuilder.newJob(RetainerHarvestJob.class)
+                            .withIdentity(jobKey)
+                            .usingJobData(RetainerHarvestJob.DATA_TARGET_ID, target.id)
+                            .usingJobData(
+                                    RetainerHarvestJob.DATA_RETAINER_RECORDING_ID,
+                                    retainerRecordingId)
+                            .build();
+            var trigger =
+                    org.quartz.TriggerBuilder.newTrigger()
+                            .withIdentity(jobKey.getName(), jobKey.getGroup())
+                            .startAt(new Date(harvestTimeMs))
+                            .build();
+            scheduler.scheduleJob(jobDetail, trigger);
+            logger.debugv(
+                    "Scheduled RetainerHarvestJob for target {0} at {1}",
+                    target.connectUrl, new Date(harvestTimeMs));
+        } catch (org.quartz.SchedulerException e) {
+            logger.warnv(
+                    e, "Failed to schedule RetainerHarvestJob for target {0}", target.connectUrl);
         }
     }
 
