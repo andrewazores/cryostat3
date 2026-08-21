@@ -64,21 +64,49 @@ public class AuthorizationFilteredResponseFilter implements ContainerResponseFil
     public void filter(
             ContainerRequestContext requestContext, ContainerResponseContext responseContext)
             throws IOException {
+        logger.debugf(
+                "AuthorizationFilteredResponseFilter: entered for %s %s (status %d)",
+                requestContext.getMethod(),
+                requestContext.getUriInfo().getRequestUri(),
+                responseContext.getStatus());
         var method = resourceInfo.getResourceMethod();
         if (method == null) {
+            logger.debug(
+                    "AuthorizationFilteredResponseFilter: resourceInfo.getResourceMethod() is"
+                            + " null, skipping");
             return;
         }
         AuthorizationFiltered annotation = method.getAnnotation(AuthorizationFiltered.class);
         if (annotation == null) {
+            logger.debugf(
+                    "AuthorizationFilteredResponseFilter: no @AuthorizationFiltered on %s.%s,"
+                            + " skipping",
+                    method.getDeclaringClass().getSimpleName(), method.getName());
             return;
         }
+        logger.debugf(
+                "AuthorizationFilteredResponseFilter: @AuthorizationFiltered found on %s.%s"
+                        + " (resourceType=%s, verb=%s)",
+                method.getDeclaringClass().getSimpleName(),
+                method.getName(),
+                annotation.resourceType(),
+                annotation.verb());
         String rawToken =
                 (String) routingContext.get(RbacHttpAuthenticationMechanism.ATTR_RAW_ACCESS_TOKEN);
         if (StringUtils.isBlank(rawToken)) {
+            logger.debugf(
+                    "AuthorizationFilteredResponseFilter: raw access token is blank on"
+                            + " RoutingContext attribute '%s', skipping — response will NOT be"
+                            + " filtered",
+                    RbacHttpAuthenticationMechanism.ATTR_RAW_ACCESS_TOKEN);
             return;
         }
         Object entity = responseContext.getEntity();
         if (!(entity instanceof Collection)) {
+            logger.debugf(
+                    "AuthorizationFilteredResponseFilter: response entity is %s, not a"
+                            + " Collection, skipping",
+                    entity == null ? "null" : entity.getClass().getName());
             return;
         }
         Collection<?> items = (Collection<?>) entity;
@@ -89,6 +117,10 @@ public class AuthorizationFilteredResponseFilter implements ContainerResponseFil
             String namespace = securityContextResolver.resolveNamespace(jvmId);
             if (!userAuthorizer.isAuthorized(
                     annotation.resourceType(), annotation.verb(), namespace, rawToken)) {
+                logger.debugf(
+                        "AuthorizationFilteredResponseFilter: DENIED %s:%s in namespace '%s' for"
+                                + " jvmId '%s'",
+                        annotation.resourceType(), annotation.verb(), namespace, jvmId);
                 continue;
             }
             boolean additionalGranted = true;
@@ -104,11 +136,19 @@ public class AuthorizationFilteredResponseFilter implements ContainerResponseFil
                 String extraResource = extra.substring(0, colon);
                 String extraVerb = extra.substring(colon + 1);
                 if (!userAuthorizer.isAuthorized(extraResource, extraVerb, namespace, rawToken)) {
+                    logger.debugf(
+                            "AuthorizationFilteredResponseFilter: DENIED additional permission"
+                                    + " %s:%s in namespace '%s' for jvmId '%s'",
+                            extraResource, extraVerb, namespace, jvmId);
                     additionalGranted = false;
                     break;
                 }
             }
             if (additionalGranted) {
+                logger.debugf(
+                        "AuthorizationFilteredResponseFilter: ALLOWED jvmId '%s' in namespace"
+                                + " '%s'",
+                        jvmId, namespace);
                 filtered.add(item);
             }
         }
