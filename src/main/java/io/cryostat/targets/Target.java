@@ -136,6 +136,36 @@ public class Target extends PanacheEntity {
     @JsonIgnore
     public DiscoveryNode discoveryNode;
 
+    public URI getConnectUrl() {
+        return connectUrl;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public String getJvmId() {
+        return jvmId;
+    }
+
+    public Map<String, String> getLabels() {
+        return labels;
+    }
+
+    public Annotations getAnnotations() {
+        return annotations;
+    }
+
+    @JsonIgnore
+    public List<ActiveRecording> getActiveRecordings() {
+        return activeRecordings;
+    }
+
+    @JsonIgnore
+    public DiscoveryNode getDiscoveryNode() {
+        return discoveryNode;
+    }
+
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public boolean isAgent() {
         return AgentConnection.isAgentConnection(connectUrl);

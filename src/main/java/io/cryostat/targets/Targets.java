@@ -42,8 +42,8 @@ public class Targets {
     @AuthorizationFiltered(
             resourceType = "targets",
             verb = "read",
-            jvmIdAccessorName = "jvmId",
-            jvmIdAccessorType = AccessorType.FIELD,
+            jvmIdAccessorName = "getJvmId",
+            jvmIdAccessorType = AccessorType.METHOD,
             additionalPermissions = {"discoverynodes:read"})
     @Operation(
             summary = "List currently discovered targets",
