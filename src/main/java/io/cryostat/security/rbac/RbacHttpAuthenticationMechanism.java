@@ -392,7 +392,7 @@ public class RbacHttpAuthenticationMechanism implements HttpAuthenticationMechan
                 });
     }
 
-    private static SelfSubjectAccessReview buildSsar(
+    static SelfSubjectAccessReview buildSsar(
             PermissionMapper.K8sResourceVerb k8s, Optional<String> namespace) {
         ResourceAttributesBuilder specBuilder =
                 new ResourceAttributesBuilder()
