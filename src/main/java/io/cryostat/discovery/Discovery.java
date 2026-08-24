@@ -44,6 +44,7 @@ import io.cryostat.discovery.DiscoveryPlugin.PluginCleanupHelper;
 import io.cryostat.discovery.KubeEndpointSlicesDiscovery.KubeDiscoveryNodeType;
 import io.cryostat.discovery.NodeType.BaseNodeType;
 import io.cryostat.expressions.MatchExpression;
+import io.cryostat.security.rbac.RbacConfig;
 import io.cryostat.security.rbac.RbacHttpAuthenticationMechanism;
 import io.cryostat.security.rbac.UserAuthorizer;
 import io.cryostat.targets.Target.Annotations;
@@ -155,6 +156,7 @@ public class Discovery {
     @Inject RbacHttpAuthenticationMechanism authMechanism;
     @Inject UserAuthorizer userAuthorizer;
     @Inject RoutingContext routingContext;
+    @Inject RbacConfig rbacConfig;
 
     void onStop(@Observes ShutdownEvent evt) throws SchedulerException {
         scheduler.shutdown();
@@ -168,7 +170,17 @@ public class Discovery {
             @QueryParam("mergeRealms") @DefaultValue("false") boolean mergeRealms) {
         String rawToken =
                 (String) routingContext.get(RbacHttpAuthenticationMechanism.ATTR_RAW_ACCESS_TOKEN);
+        logger.debugf(
+                "Discovery.get: mergeRealms=%b rbacMode=%s rawToken=%s",
+                mergeRealms,
+                rbacConfig.mode(),
+                StringUtils.isBlank(rawToken)
+                        ? "<blank>"
+                        : "<present, length=" + rawToken.length() + ">");
         DiscoveryNode universe = DiscoveryNode.getUniverse();
+        logger.debugf(
+                "Discovery.get: universe has %d realm children",
+                universe.children == null ? 0 : universe.children.size());
         DiscoveryNode filteredUniverse = filterDiscoveryTree(universe, rawToken);
         if (!mergeRealms) {
             return filteredUniverse;
@@ -1215,8 +1227,15 @@ public class Discovery {
         DiscoveryNode filteredUniverse = copyNode(universe);
         for (DiscoveryNode realm : universe.children) {
             if (KubeEndpointSlicesDiscovery.REALM.equals(realm.name)) {
+                logger.debugf(
+                        "Discovery.filterDiscoveryTree: found KubernetesApi realm with %d"
+                                + " children, applying namespace filter",
+                        realm.children == null ? 0 : realm.children.size());
                 filteredUniverse.children.add(filterKubernetesRealm(realm, rawToken));
             } else {
+                logger.debugf(
+                        "Discovery.filterDiscoveryTree: passing realm '%s' through unfiltered",
+                        realm.name);
                 filteredUniverse.children.add(realm);
             }
         }
@@ -1224,33 +1243,62 @@ public class Discovery {
     }
 
     /**
-     * Returns a copy of the Kubernetes realm node with only the namespace children for which the
-     * caller (identified by {@code rawToken}) holds {@code discoverynodes:read} in that namespace.
-     * The namespace is resolved first from the {@code discovery.cryostat.io/namespace} label on the
-     * node, falling back to the node's name. When {@code rawToken} is blank all children are
-     * included unchanged.
+     * Returns a deep copy of the Kubernetes realm subtree with all {@code Namespace}-typed nodes
+     * that the caller is not authorized to view removed, along with their entire subtrees. Uses a
+     * depth-first traversal so that namespace nodes are found regardless of their depth under the
+     * realm root.
+     *
+     * <p>The namespace string used for the SSAR check is resolved first from the {@code
+     * discovery.cryostat.io/namespace} label on the node, falling back to the node's name.
+     *
+     * <p>When {@code rawToken} is blank, all nodes are included unchanged.
      */
     private DiscoveryNode filterKubernetesRealm(DiscoveryNode kubeRealm, String rawToken) {
-        DiscoveryNode filtered = copyNode(kubeRealm);
-        for (DiscoveryNode nsNode : kubeRealm.children) {
-            String namespace =
-                    StringUtils.isNotBlank(
-                                    nsNode.labels.get(
-                                            KubeEndpointSlicesDiscovery
-                                                    .DISCOVERY_NAMESPACE_LABEL_KEY))
-                            ? nsNode.labels.get(
-                                    KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY)
-                            : nsNode.name;
-            if (StringUtils.isBlank(rawToken)
-                    || userAuthorizer.isAuthorized("discoverynodes", "read", namespace, rawToken)) {
-                filtered.children.add(nsNode);
-            } else {
+        return filterNodeDfs(kubeRealm, rawToken);
+    }
+
+    /**
+     * Recursively copies {@code node}, retaining only those children (and their subtrees) that
+     * either are not Namespace-typed or pass the namespace SSAR check. A Namespace node that fails
+     * the check is dropped together with its entire subtree.
+     */
+    private DiscoveryNode filterNodeDfs(DiscoveryNode node, String rawToken) {
+        DiscoveryNode copy = copyNode(node);
+        for (DiscoveryNode child : node.children) {
+            if (KubeDiscoveryNodeType.NAMESPACE.getKind().equals(child.nodeType)) {
+                String namespace =
+                        StringUtils.isNotBlank(
+                                        child.labels.get(
+                                                KubeEndpointSlicesDiscovery
+                                                        .DISCOVERY_NAMESPACE_LABEL_KEY))
+                                ? child.labels.get(
+                                        KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY)
+                                : child.name;
                 logger.debugf(
-                        "Discovery: pruning namespace '%s' from discovery tree (unauthorized)",
-                        namespace);
+                        "Discovery.filterNodeDfs: evaluating Namespace node '%s' (resolved"
+                                + " namespace='%s') rawToken=%s",
+                        child.name,
+                        namespace,
+                        StringUtils.isBlank(rawToken)
+                                ? "<blank>"
+                                : "<present, length=" + rawToken.length() + ">");
+                if (StringUtils.isBlank(rawToken)
+                        || userAuthorizer.isAuthorized(
+                                "discoverynodes", "read", namespace, rawToken)) {
+                    logger.debugf(
+                            "Discovery.filterNodeDfs: ALLOWED namespace '%s', including subtree",
+                            namespace);
+                    copy.children.add(filterNodeDfs(child, rawToken));
+                } else {
+                    logger.debugf(
+                            "Discovery.filterNodeDfs: DENIED namespace '%s', pruning subtree",
+                            namespace);
+                }
+            } else {
+                copy.children.add(filterNodeDfs(child, rawToken));
             }
         }
-        return filtered;
+        return copy;
     }
 
     private DiscoveryNode copyNode(DiscoveryNode source) {
