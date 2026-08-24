@@ -87,7 +87,7 @@ public class RbacHttpAuthenticationMechanism implements HttpAuthenticationMechan
     static final String HEADER_AUTHORIZATION = "Authorization";
     static final String BEARER_PREFIX = "bearer ";
     public static final String HEADER_AGENT_PROXY = "X-Cryostat-Agent-Proxy";
-    static final String ATTR_RAW_ACCESS_TOKEN = "raw_access_token";
+    public static final String ATTR_RAW_ACCESS_TOKEN = "raw_access_token";
 
     @Inject Logger log;
     @Inject RbacConfig config;
