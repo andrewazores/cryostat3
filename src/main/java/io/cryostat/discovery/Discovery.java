@@ -1219,53 +1219,46 @@ public class Discovery {
     }
 
     /**
-     * Returns a copy of the universe with the Kubernetes realm's unauthorized namespace subtrees
-     * pruned. Universe and Realm nodes are always included. Non-Kubernetes realm subtrees pass
-     * through unmodified. When {@code rawToken} is blank, all children are included.
+     * Returns a copy of the universe with all realm subtrees authorization-filtered. Universe and
+     * Realm nodes themselves are always included. Within each realm, {@link #filterNodeDfs} prunes
+     * any subtree that the caller is not authorized to view. When {@code rawToken} is blank, all
+     * children are included.
      */
     private DiscoveryNode filterDiscoveryTree(DiscoveryNode universe, String rawToken) {
         DiscoveryNode filteredUniverse = copyNode(universe);
         for (DiscoveryNode realm : universe.children) {
-            if (KubeEndpointSlicesDiscovery.REALM.equals(realm.name)) {
-                logger.debugf(
-                        "Discovery.filterDiscoveryTree: found KubernetesApi realm with %d"
-                                + " children, applying namespace filter",
-                        realm.children == null ? 0 : realm.children.size());
-                filteredUniverse.children.add(filterKubernetesRealm(realm, rawToken));
-            } else {
-                logger.debugf(
-                        "Discovery.filterDiscoveryTree: passing realm '%s' through unfiltered",
-                        realm.name);
-                filteredUniverse.children.add(realm);
-            }
+            logger.debugf(
+                    "Discovery.filterDiscoveryTree: filtering realm '%s' (%d children)",
+                    realm.name, realm.children == null ? 0 : realm.children.size());
+            filteredUniverse.children.add(filterNodeDfs(realm, rawToken));
         }
         return filteredUniverse;
     }
 
     /**
-     * Returns a deep copy of the Kubernetes realm subtree with all {@code Namespace}-typed nodes
-     * that the caller is not authorized to view removed, along with their entire subtrees. Uses a
-     * depth-first traversal so that namespace nodes are found regardless of their depth under the
-     * realm root.
+     * Recursively copies {@code node}, retaining only those children (and their subtrees) for which
+     * the caller is authorized. Authorization gates are applied at two node types:
      *
-     * <p>The namespace string used for the SSAR check is resolved first from the {@code
-     * discovery.cryostat.io/namespace} label on the node, falling back to the node's name.
+     * <ul>
+     *   <li>{@code Namespace} — covers all nodes placed under the KubernetesApi realm by the
+     *       built-in Kubernetes discovery or by Agents using the KUBERNETES fill algorithm. The
+     *       entire subtree rooted at an unauthorized Namespace is dropped.
+     *   <li>{@code CryostatAgent} — covers Agent-published target nodes that live directly under an
+     *       agent-owned Realm (NONE fill strategy, no Namespace ancestor). Authorization is checked
+     *       using the {@code discovery.cryostat.io/namespace} label on the node itself; if the
+     *       label is absent the node is included.
+     * </ul>
      *
-     * <p>When {@code rawToken} is blank, all nodes are included unchanged.
-     */
-    private DiscoveryNode filterKubernetesRealm(DiscoveryNode kubeRealm, String rawToken) {
-        return filterNodeDfs(kubeRealm, rawToken);
-    }
-
-    /**
-     * Recursively copies {@code node}, retaining only those children (and their subtrees) that
-     * either are not Namespace-typed or pass the namespace SSAR check. A Namespace node that fails
-     * the check is dropped together with its entire subtree.
+     * <p>For both types the namespace string for the SSAR check is resolved first from the {@code
+     * discovery.cryostat.io/namespace} label, falling back to the node name for Namespace nodes.
+     * When {@code rawToken} is blank all nodes are included unchanged (PERMISSIVE / no-token path).
      */
     private DiscoveryNode filterNodeDfs(DiscoveryNode node, String rawToken) {
         DiscoveryNode copy = copyNode(node);
         for (DiscoveryNode child : node.children) {
             if (KubeDiscoveryNodeType.NAMESPACE.getKind().equals(child.nodeType)) {
+                // Namespace node: gate the entire subtree on the namespace SSAR check.
+                // Namespace label preferred over node name as the authoritative namespace value.
                 String namespace =
                         StringUtils.isNotBlank(
                                         child.labels.get(
@@ -1275,8 +1268,7 @@ public class Discovery {
                                         KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY)
                                 : child.name;
                 logger.debugf(
-                        "Discovery.filterNodeDfs: evaluating Namespace node '%s' (resolved"
-                                + " namespace='%s') rawToken=%s",
+                        "Discovery.filterNodeDfs: Namespace node '%s' namespace='%s' rawToken=%s",
                         child.name,
                         namespace,
                         StringUtils.isBlank(rawToken)
@@ -1285,14 +1277,51 @@ public class Discovery {
                 if (StringUtils.isBlank(rawToken)
                         || userAuthorizer.isAuthorized(
                                 "discoverynodes", "read", namespace, rawToken)) {
-                    logger.debugf(
-                            "Discovery.filterNodeDfs: ALLOWED namespace '%s', including subtree",
-                            namespace);
+                    logger.debugf("Discovery.filterNodeDfs: ALLOWED Namespace '%s'", namespace);
                     copy.children.add(filterNodeDfs(child, rawToken));
                 } else {
                     logger.debugf(
-                            "Discovery.filterNodeDfs: DENIED namespace '%s', pruning subtree",
+                            "Discovery.filterNodeDfs: DENIED Namespace '%s', pruning subtree",
                             namespace);
+                }
+            } else if (BaseNodeType.AGENT.getKind().equals(child.nodeType)) {
+                // CryostatAgent node with no Namespace ancestor (NONE fill strategy): the agent
+                // itself carries the discovery.cryostat.io/namespace label. If the label is absent
+                // there is no namespace context to filter on, so include the node.
+                String namespace =
+                        child.labels != null
+                                ? child.labels.get(
+                                        KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY)
+                                : null;
+                if (StringUtils.isBlank(namespace)) {
+                    logger.debugf(
+                            "Discovery.filterNodeDfs: CryostatAgent '%s' has no namespace label,"
+                                    + " including",
+                            child.name);
+                    copy.children.add(filterNodeDfs(child, rawToken));
+                } else {
+                    logger.debugf(
+                            "Discovery.filterNodeDfs: CryostatAgent '%s' namespace='%s'"
+                                    + " rawToken=%s",
+                            child.name,
+                            namespace,
+                            StringUtils.isBlank(rawToken)
+                                    ? "<blank>"
+                                    : "<present, length=" + rawToken.length() + ">");
+                    if (StringUtils.isBlank(rawToken)
+                            || userAuthorizer.isAuthorized(
+                                    "discoverynodes", "read", namespace, rawToken)) {
+                        logger.debugf(
+                                "Discovery.filterNodeDfs: ALLOWED CryostatAgent '%s' in"
+                                        + " namespace '%s'",
+                                child.name, namespace);
+                        copy.children.add(filterNodeDfs(child, rawToken));
+                    } else {
+                        logger.debugf(
+                                "Discovery.filterNodeDfs: DENIED CryostatAgent '%s' in namespace"
+                                        + " '%s', pruning",
+                                child.name, namespace);
+                    }
                 }
             } else {
                 copy.children.add(filterNodeDfs(child, rawToken));
