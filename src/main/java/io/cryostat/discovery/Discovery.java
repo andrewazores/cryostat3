@@ -71,6 +71,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.NoResultException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
+import jakarta.validation.constraints.NotNull;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -1529,9 +1530,9 @@ public class Discovery {
     }
 
     static record PluginRegistration(
-            String id,
-            String token,
-            @Schema(type = SchemaType.ARRAY, implementation = KeyValue.class)
+            @NotNull String id,
+            @NotNull String token,
+            @NotNull @Schema(type = SchemaType.ARRAY, implementation = KeyValue.class)
                     Map<String, String> env) {}
 
     static record AgentRegistration(
@@ -1542,8 +1543,13 @@ public class Discovery {
             DiscoveryFillStrategy fillStrategy,
             Map<String, String> context) {}
 
+    @Schema(
+            name = "AgentCredentialRequest",
+            requiredProperties = {"matchExpression", "username", "password"})
     static record AgentCredentialRequest(
-            String matchExpression, String username, String password) {}
+            @Schema(pattern = "\\S") String matchExpression,
+            @Schema(pattern = "\\S") String username,
+            @Schema(pattern = "\\S") String password) {}
 
     static record DiscoveryPublication(
             List<DiscoveryNode> nodes,
@@ -1595,10 +1601,12 @@ public class Discovery {
             Optional<DiscoveryFillStrategy> fillStrategy,
             Optional<Map<String, String>> context) {}
 
-    @Schema(name = "AgentRegistrationRequest")
+    @Schema(
+            name = "AgentRegistrationRequest",
+            requiredProperties = {"realm", "callback", "credential"})
     static record AgentRegistrationRequest(
-            String realm,
-            String callback,
+            @Schema(pattern = "\\S") String realm,
+            @Schema(pattern = "\\S") String callback,
             AgentCredentialRequest credential,
             List<DiscoveryNodeRequest> nodes,
             DiscoveryFillStrategy fillStrategy,
