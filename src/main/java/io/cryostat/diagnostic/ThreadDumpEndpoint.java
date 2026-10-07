@@ -25,6 +25,8 @@ import java.util.Optional;
 
 import io.cryostat.ConfigProperties;
 import io.cryostat.recordings.ActiveRecordings.Metadata;
+import io.cryostat.security.rbac.AccessorType;
+import io.cryostat.security.rbac.AuthorizationFiltered;
 import io.cryostat.targets.TargetConnectionManager;
 import io.cryostat.util.HttpMimeType;
 
@@ -69,6 +71,10 @@ public class ThreadDumpEndpoint {
     @Inject DiagnosticsHelper helper;
 
     @PermissionsAllowed(value = "threaddumps:read", inclusive = true)
+    @AuthorizationFiltered(
+            permissions = {"threaddumps:read"},
+            jvmIdAccessorName = "jvmId",
+            jvmIdAccessorType = AccessorType.METHOD)
     @GET
     public Collection<Diagnostics.ArchivedThreadDumpDirectory> listThreadDumps() {
         var map = new HashMap<String, Diagnostics.ArchivedThreadDumpDirectory>();

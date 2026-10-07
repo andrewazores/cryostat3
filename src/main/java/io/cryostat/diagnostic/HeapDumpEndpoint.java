@@ -25,6 +25,8 @@ import java.util.Optional;
 
 import io.cryostat.ConfigProperties;
 import io.cryostat.recordings.ActiveRecordings.Metadata;
+import io.cryostat.security.rbac.AccessorType;
+import io.cryostat.security.rbac.AuthorizationFiltered;
 import io.cryostat.util.HttpMimeType;
 
 import io.quarkus.security.PermissionsAllowed;
@@ -69,6 +71,10 @@ public class HeapDumpEndpoint {
     @Inject DiagnosticsHelper helper;
 
     @PermissionsAllowed(value = "heapdumps:read", inclusive = true)
+    @AuthorizationFiltered(
+            permissions = {"heapdumps:read"},
+            jvmIdAccessorName = "jvmId",
+            jvmIdAccessorType = AccessorType.METHOD)
     @GET
     public Collection<Diagnostics.ArchivedHeapDumpDirectory> listHeapDumps() {
         var map = new HashMap<String, Diagnostics.ArchivedHeapDumpDirectory>();

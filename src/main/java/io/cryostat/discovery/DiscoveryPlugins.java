@@ -527,7 +527,7 @@ public class DiscoveryPlugins {
         }
 
         for (var n : body.nodes) {
-            enrichWithKubernetesMetadata(n, k8sMetadata);
+            enrichWithKubernetesMetadata(namespace, n, k8sMetadata);
             if (n.labels == null) {
                 n.labels = new HashMap<>();
             }
@@ -578,7 +578,9 @@ public class DiscoveryPlugins {
     }
 
     private void enrichWithKubernetesMetadata(
-            DiscoveryNode n, KubeEndpointSlicesDiscovery.KubernetesMetadata k8sMetadata) {
+            String namespace,
+            DiscoveryNode n,
+            KubeEndpointSlicesDiscovery.KubernetesMetadata k8sMetadata) {
         if (n.target == null) {
             return;
         }
@@ -599,6 +601,7 @@ public class DiscoveryPlugins {
             n.target.annotations =
                     new Annotations(platformAnnotations, n.target.annotations.cryostat());
         }
+        n.labels.put(KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY, namespace);
     }
 
     @Transactional

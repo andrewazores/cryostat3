@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 
 import io.cryostat.PanacheUuidEntity;
 import io.cryostat.discovery.DiscoveryNode;
+import io.cryostat.discovery.KubeEndpointSlicesDiscovery;
 import io.cryostat.recordings.ActiveRecording;
 import io.cryostat.targets.events.TargetEvents;
 import io.cryostat.util.URIUtil;
@@ -150,6 +151,23 @@ public class Target extends PanacheUuidEntity {
     @JsonIgnore
     public boolean isConnectable() {
         return id != null && StringUtils.isNotBlank(jvmId);
+    }
+
+    /**
+     * Returns the Kubernetes namespace associated with this target, resolved from the {@code
+     * discovery.cryostat.io/namespace} label on the target's discovery node.
+     *
+     * @return the namespace, or empty if the target has no discovery node, no labels, or the label
+     *     is absent
+     */
+    @JsonIgnore
+    public Optional<String> getNamespace() {
+        if (discoveryNode == null || discoveryNode.labels == null) {
+            return Optional.empty();
+        }
+        String ns =
+                discoveryNode.labels.get(KubeEndpointSlicesDiscovery.DISCOVERY_NAMESPACE_LABEL_KEY);
+        return StringUtils.isBlank(ns) ? Optional.empty() : Optional.of(ns);
     }
 
     public static Target getTargetById(UUID targetId) {

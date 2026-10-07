@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.UUID;
 
 import io.cryostat.expressions.MatchExpressionEvaluator;
+import io.cryostat.security.rbac.AccessorType;
+import io.cryostat.security.rbac.AuthorizationFiltered;
 
 import io.quarkus.security.PermissionsAllowed;
 import jakarta.inject.Inject;
@@ -38,6 +40,10 @@ public class Targets {
     @GET
     @Path("/api/v5/targets")
     @PermissionsAllowed(value = "targets:read", inclusive = true)
+    @AuthorizationFiltered(
+            permissions = {"targets:read", "discoverynodes:read"},
+            jvmIdAccessorName = "getJvmId",
+            jvmIdAccessorType = AccessorType.METHOD)
     @Operation(
             summary = "List currently discovered targets",
             description =
